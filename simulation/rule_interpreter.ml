@@ -630,6 +630,12 @@ let remove_tracked ccs state =
        tcc ccs in
      { state with story_machinery = Some (tcc',x) }
 
+let print_trace env state = 
+  match state.story_machinery with
+  | None -> ()
+  | Some (_,(_,steps)) ->
+      Match_stories.print_rules env (List.rev steps)
+
 let generate_stories logger env state =
   match state.story_machinery with
   | None -> ()

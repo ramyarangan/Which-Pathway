@@ -1,5 +1,5 @@
 type secret_log_info
-type secret_step
+type secret_step = Utilities.S.PH.B.PB.CI.Po.K.refined_step
 
 val init_secret_log_info :
   unit -> secret_log_info
