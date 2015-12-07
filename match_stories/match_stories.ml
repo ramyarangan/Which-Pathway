@@ -26,7 +26,7 @@ type story = adjacency_list * adjacency_list * (StoryEvent.story_event list)
 *)
 
 (* all_applications : int -> [instantiation] *)
-type all_applications = instantiation Map.Make(int).t
+type all_applications = (instantiation list) Map.Make(struct type t = int let compare = compare end).t
 
 let map_add_val_to_list map key val = 
 	if Map.mem key map then
