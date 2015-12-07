@@ -3,7 +3,7 @@ module KI = Utilities.S.PH.B.PB.CI.Po.K
 
 type instantiation = Instantiation.concrete Instantiation.event
 module StoryEvent = struct
-	type story_event = (int * (String * instantiation))
+	type story_event = (int * (string * instantiation))
 
 	let compare (x: story_event) y = 
 		match (x, y) with 
@@ -20,21 +20,21 @@ type story = adjacency_list * adjacency_list * (StoryEvent.story_event list)
 (* Create a toy story. This is a hack, eventually we will read this from user input 
 * depending on the story the user is searching for.
 *)
-type all_applications = Map.Make(String)
+type all_applications = Map.Make(int)
+
+let map_add_val_to_list map key val = 
+	if Map.mem key map then
+		let val_list = Map.find key map in 
+			map = Map.add key (val_list @ [val]) map
+	else map = add key [val] map
+	map
 
 let fill_all_applications env steps = 
 	let map = all_applications.empty in 
 	let fill_application env map step = 
-		match step with 
+		match step with
 		| KI.Event ((Causal.RULE (rule)), inst) ->
-			(	
-				let name = get_rule_name env rule in 
-				if mem name map then 
-					let appl_list = find name map in
-						map = add name (appl_list @ [inst]) map
-				else map = add name [inst] map
-				map
-			)
+				map_add_val_to_list map rule inst
 		| KI.Event _ | KI.Subs _ | KI.Dummy _ | KI.Obs _ | KI.Init _ -> map
 	in
 	List.fold_left (fill_application env) map steps 
@@ -50,9 +50,6 @@ let create_toy_story env steps =
 	let reverse_list : adjacency_list = Map.singleton y_event [x_event] in
 	let start_events = [x_event] in
 	(forward_list, reverse_list, start_events)
-
-let get_rule_name env id = 
-	"x"
 
 let print_trace env steps = 
   Format.eprintf "@[<v>%a@]" (Pp.list Pp.space KI.print_refined_step) steps
@@ -74,13 +71,18 @@ let print_rules env steps =
 let event_matches trace_step story_event = 
 	
 
+let add_event map story_event = 
+	let (rule_id, (rule, instantiation)) = story_event in
+	map_add_val_to_list M rule story_event
+
 (* Does OCaml have a HashMap implementation? Otherwise, consider using HashTbl
  * when possible, because these are log n lookups. *)
 let story_embeds env steps story = 
-	let s = create_toy_story env steps in
+	let (forward_list, reverse_list, start_events) = 
+		(create_toy_story env steps) in
 	let M = (Map.Make(int)).empty in (* M is map from rule id to story_events *)
 	let S = (Map.Make(int)).empty in (* S is a map from story_event ids to trace id *)
-
+	
 	(* Initialize the list M *)
 	(* Hash table of M *)
 	(* *)
