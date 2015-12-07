@@ -1,6 +1,8 @@
  
 module KI = Utilities.S.PH.B.PB.CI.Po.K
 
+module IntMap = Map.Make(struct type t= int let compare = compare end);;
+
 type instantiation = Instantiation.concrete Instantiation.event
 
 module StoryEvent =
@@ -26,7 +28,7 @@ type story = adjacency_list * adjacency_list * (StoryEvent.story_event list)
 *)
 
 (* all_applications : int -> [instantiation] *)
-type all_applications = (instantiation list) Map.Make(struct type t = int let compare = compare end).t
+type all_applications = (instantiation list) IntMap.t
 
 let map_add_val_to_list map key val = 
 	if Map.mem key map then
@@ -49,6 +51,8 @@ let fill_all_applications env steps =
 	in
 	List.fold_left (fill_application env) map steps 
 
+
+(* TODO: Change x, y below...figure out how we are id'ing elements. *)
 let create_toy_story env steps = 
 	let get_rand_element l = List.nth l (Random.int (List.length l)) in
 	let map = find_all_applications env steps in (* Need to handle if x not in map *)
@@ -74,8 +78,8 @@ let mark_steps steps =
 let story_embeds env steps story = 
 	let (forward_list, reverse_list, start_events) = 
 		(create_toy_story env steps) in
-	let M = (Map.Make(int)).empty in (* M is map from rule id to story_events *)
-	let S = (Map.Make(int)).empty in (* S is a map from story_event ids to trace id *)
+	let M = IntMap.empty in (* M is map from rule id to story_events *)
+	let S = IntMap.empty in (* S is a map from story_event ids to trace id *)
 	let add_event map story_event = 
 		let (rule_id, (rule, instantiation)) = story_event in
 		map_add_val_to_list M rule story_event
