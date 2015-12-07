@@ -11,7 +11,7 @@
 
 %obs: 'GOAL' A(x~p,y~u,z~p)
 
-%init: 10000 A(x~u,y~u,z~u)
+%init: 1 A(x~u,y~u,z~u)
 
 %agent: A(x~u~p,y~u~p,z~u~p)
 

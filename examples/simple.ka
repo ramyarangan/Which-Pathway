@@ -1,0 +1,14 @@
+%def: "displayCompression" "none" "weak" 
+%def: "showIntroEvents" "true" 
+
+'x++' A(x~u) -> A(x~p) @10
+'y++' A(x~p,y~u) -> A(x~p,y~p) @10
+
+%obs: 'GOAL' A(x~p,y~p)
+
+%init: 1 A(x~u,y~u)
+
+%agent: A(x~u~p,y~u~p)
+
+%mod: [T]>0 do $TRACK 'GOAL' [true]
+%def: "displayCompression" "none" "weak" "strong"
