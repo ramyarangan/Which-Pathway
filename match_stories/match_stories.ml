@@ -2,25 +2,31 @@
 module KI = Utilities.S.PH.B.PB.CI.Po.K
 
 type instantiation = Instantiation.concrete Instantiation.event
-module StoryEvent = struct
-	type story_event = (int * (string * instantiation))
 
-	let compare (x: story_event) y = 
-		match (x, y) with 
-		| ((x1, _), (y1, _)) -> (
-	 		if (x1 < y1) then -1
-			else if (x1 > y1) then 1
-			else 0
-		)
-end
+module StoryEvent =
+	struct
+		type story_event = (int * (string * instantiation))
 
-type adjacency_list = Map.Make(StoryEvent)
+		let compare (x: story_event) y = 
+			match (x, y) with 
+			| ((x1, _), (y1, _)) -> (
+	 			if (x1 < y1) then -1
+				else if (x1 > y1) then 1
+				else 0
+			)
+	end;;
+
+(* adjacency_list : StoryEvent -> [StoryEvent] *)
+
+type adjacency_list = (StoryEvent.t list) Map.Make(StoryEvent).t 
 type story = adjacency_list * adjacency_list * (StoryEvent.story_event list)
 
 (* Create a toy story. This is a hack, eventually we will read this from user input 
 * depending on the story the user is searching for.
 *)
-type all_applications = Map.Make(int)
+
+(* all_applications : int -> [instantiation] *)
+type all_applications = instantiation Map.Make(int).t
 
 let map_add_val_to_list map key val = 
 	if Map.mem key map then
@@ -28,6 +34,7 @@ let map_add_val_to_list map key val =
 			map = Map.add key (val_list @ [val]) map
 	else map = add key [val] map
 	map
+
 
 let fill_all_applications env steps = 
 	let map = all_applications.empty in 
