@@ -68,6 +68,7 @@ val add_tracked :
   t -> t
 val remove_tracked : Connected_component.t array -> t -> t
 val generate_stories : Format.formatter -> Environment.t -> t -> unit
+val print_trace : Environment.t -> t -> unit
 
 (** {6 Debugging} *)
 

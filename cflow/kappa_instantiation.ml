@@ -37,7 +37,12 @@ sig
   type refined_event = Causal.event_kind * Instantiation.concrete Instantiation.event
   type refined_obs =
       Causal.event_kind * Instantiation.concrete Instantiation.test list * unit Mods.simulation_info
-  type refined_step
+  type refined_step =
+  | Subs of (agent_id * agent_id)
+  | Event of refined_event
+  | Init of Instantiation.concrete Instantiation.action list
+  | Obs of refined_obs
+  | Dummy  of string
 
   val empty_side_effect: side_effect
   val dummy_refined_step: string -> refined_step
