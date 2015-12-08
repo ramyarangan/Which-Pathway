@@ -636,6 +636,12 @@ let print_trace env state =
   | Some (_,(_,steps)) ->
       Match_stories.print_rules env (List.rev steps)
 
+let check_story_embeds env state = 
+  match state.story_machinery with
+  | None -> ()
+  | Some (_, (_,steps)) ->
+      Match_stories.check_weak_story_embeds env steps 
+
 let generate_stories logger env state =
   match state.story_machinery with
   | None -> ()

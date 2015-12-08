@@ -1,15 +1,36 @@
- 
+open Printf
+
 module KI = Utilities.S.PH.B.PB.CI.Po.K
+module IntMap = Map.Make(struct type t = int let compare = compare end)
 
-module IntMap = Map.Make(struct type t= int let compare = compare end);;
+(****************************************************************************
+* General map helpers 
+*)
+let map_add_val_to_list map key v = 
+	if (IntMap.mem key map) then
+		let val_list = IntMap.find key map in 
+			IntMap.add key (val_list @ [v]) map
+	else IntMap.add key [v] map
 
-type instantiation = Instantiation.concrete Instantiation.event
+let map_rem_head_from_list map key = 
+	if IntMap.mem key map then
+		let val_list = IntMap.find key map in 
+			if (List.length val_list) = 1 then
+				IntMap.remove key map
+			else
+				IntMap.add key (List.tl val_list) map
+	else map
+
+(****************************************************************************
+* Story data structures 
+*)
+type instantiation_t = Instantiation.concrete Instantiation.event
 
 module StoryEvent =
 	struct
-		type story_event = (int * (int * instantiation))
+		type t = (int * (int * instantiation_t))
 
-		let compare (x: story_event) y = 
+		let compare (x: t) y = 
 			match (x, y) with 
 			| ((x1, _), (y1, _)) -> (
 	 			if (x1 < y1) then -1
@@ -18,39 +39,27 @@ module StoryEvent =
 			)
 	end;;
 
-(* adjacency_list : StoryEvent -> [StoryEvent] *)
+(* adjacency_list_t : int -> [StoryEvent] *)
+type adjacency_list_t = (StoryEvent.t list) IntMap.t 
+type story_t = (adjacency_list_t * adjacency_list_t) * (StoryEvent.t list)
 
-type adjacency_list = (StoryEvent.t list) Map.Make(StoryEvent).t 
-type story = adjacency_list * adjacency_list * (StoryEvent.story_event list)
-
-(* Create a toy story. This is a hack, eventually we will read this from user input 
-* depending on the story the user is searching for.
+(**************************************************************************
+* Create test story. This is a hack. Eventually we will read this 
+* from user input depending on the story the user is searching for.
 *)
-
-(* all_applications : int -> [instantiation] *)
-type all_applications = (instantiation list) IntMap.t
-
-let map_add_val_to_list map key val = 
-	if Map.mem key map then
-		let val_list = Map.find key map in 
-			map = Map.add key (val_list @ [val]) map
-	else map = add key [val] map
-	map
-
-(* GET FROM PIERRE *)
 let find_id_for_rule env name = 
+	(* Environment.num_of_rule (Location.dummy_annot name) env *)
+	1
 
-
-let fill_all_applications env steps = 
-	let map = all_applications.empty in 
-	let fill_application env map step = 
+let find_all_applications env steps = 
+	let map = IntMap.empty in 
+	let find_application env map step = 
 		match step with
 		| KI.Event ((Causal.RULE (rule)), inst) ->
 				map_add_val_to_list map rule inst
 		| KI.Event _ | KI.Subs _ | KI.Dummy _ | KI.Obs _ | KI.Init _ -> map
 	in
-	List.fold_left (fill_application env) map steps 
-
+	List.fold_left (find_application env) map steps 
 
 (* TODO: Change x, y below...figure out how we are id'ing elements. *)
 let create_toy_story env steps = 
@@ -58,53 +67,91 @@ let create_toy_story env steps =
 	let map = find_all_applications env steps in (* Need to handle if x not in map *)
 	let x_id = (find_id_for_rule env "x") in
 	let y_id = (find_id_for_rule env "y") in
-	let x_event : StoryEvent.story_event = 
-		(0, x_id, get_rand_element (find x_id map)) in 
-	let y_event : StoryEvent.story_event = 
-		(1, y_id, get_rand_element (find y_id map)) in
-	let forward_list : adjacency_list = Map.singleton x_event [y_event] in
-	let reverse_list : adjacency_list = Map.singleton y_event [x_event] in
+	let x_event : StoryEvent.t = 
+		(0, (x_id, get_rand_element (IntMap.find x_id map))) in 
+	let y_event : StoryEvent.t = 
+		(1, (y_id, get_rand_element (IntMap.find y_id map))) in
+	let forward_list : adjacency_list_t = IntMap.singleton 0 [y_event] in
+	let reverse_list : adjacency_list_t = IntMap.singleton 1 [x_event] in
 	let start_events = [x_event] in
-	(forward_list, reverse_list, start_events)
+	((forward_list, reverse_list), start_events)
 
-(* FILL IN. Function to a bool *)
-let instantiation_matches trace_inst story_inst = 
-	
-let mark_steps steps = 
 
+(******************************************************************************
+* Weak compression matching helpers and algorithm 
+*)
+let mark_steps_with_id steps = 
+	let add_id id_list step = 
+		if ((List.length id_list) = 0) then [(0, step)]
+		else
+			let (cur_int, _) = List.hd id_list in
+			([(cur_int + 1, step)] @ id_list) 
+	in
+	List.fold_left add_id [] steps
+
+let add_story_events_to_map map story_events = 
+	let add_story_event_to_map map story_event = 
+		let (_, (rule, _)) = story_event in
+		map_add_val_to_list map rule story_event
+	in 
+	List.fold_left add_story_event_to_map map story_events
+
+let step_weak_algorithm (s : story_t) (wq, result_map, is_done) mark_step = 
+	if is_done then (wq, result_map, is_done)
+	else 
+		let (step_id, step) = mark_step in
+		let ((forward_edges, backward_edges), _) = s in
+		match step with
+		| KI.Event (Causal.RULE (rule), trace_inst) -> (
+			if IntMap.mem rule wq then (
+				let filtered = 
+					List.filter 
+						(fun ((_, (_, story_inst)) : StoryEvent.t) -> (story_inst = trace_inst)) 
+						(IntMap.find rule wq) in
+				if ((List.length filtered) > 0) then (  
+					(* Here we've matched trace event to a story event *)
+					let (story_event_id, (rule_id, story_inst)) = List.hd filtered in
+					(* Update result set with new mapping *)
+					let result_map = IntMap.add story_event_id step_id result_map in
+					(* Remove matched story instance from wq *)
+					let wq = map_rem_head_from_list wq rule in
+					(* Add new elements from story to wq *)
+					let might_add = IntMap.find story_event_id forward_edges in
+					(* Only add if all predecessors have been handled *)
+					let all_pred_handled ((story_event_id, _) : StoryEvent.t) = (
+						let pred_handled prev_handled (pred_id, _) = 
+							(prev_handled && (IntMap.mem pred_id result_map))
+						in
+						List.fold_left pred_handled true (IntMap.find story_event_id backward_edges)
+					) in
+					let to_add = List.filter all_pred_handled might_add in
+					let wq = add_story_events_to_map wq to_add in
+					(wq, result_map, IntMap.is_empty wq)
+				)
+				else (wq, result_map, is_done)  (* No matching instantiation *)
+			)
+			else (wq, result_map, is_done)  (* No matching rule *)
+			)
+		| KI.Event _ | KI.Dummy _ | KI.Obs _ | KI.Init _ | KI.Subs _ -> 
+			(wq, result_map, is_done)
 
 (* Does OCaml have a HashMap implementation? Otherwise, consider using HashTbl
  * when possible, because these are log n lookups. *)
-let story_embeds env steps story = 
-	let (forward_list, reverse_list, start_events) = 
-		(create_toy_story env steps) in
-	let M = IntMap.empty in (* M is map from rule id to story_events *)
-	let S = IntMap.empty in (* S is a map from story_event ids to trace id *)
-	let add_event map story_event = 
-		let (rule_id, (rule, instantiation)) = story_event in
-		map_add_val_to_list M rule story_event
-	in 
-	let M = List.fold_left add_event M start_events in (* Initialize M *)
-	let step_algorithm result_map mark_step = 
-		let (step, step_id) = mark_step in
-		match step with
-		| KI.Event (Causal.RULE (rule), trace_inst) -> (
-			if Map.mem rule M then (
-				let filtered = 
-					List.filter (instantiation_matches trace_inst) (Map.find rule M) in
-				if not filtered.is_empty then (
-					let (story_event_id, (rule_id, story_inst)) = List.hd filtered in (
-						let S = S.add story_event_id step_id S 
-					)
-				)
-			)
-			)
-		| KI.Event _ | KI.Dummy _ | KI.Obs _ | KI.Init _ -> (* do this *)
-	in 
-	S = List.fold_left (step_algorithm S) (mark_steps steps)
-(*********************************************************************
+let check_weak_story_embeds env steps = 
+	let s = (create_toy_story env steps) in
+	let ((_, _), start_events) = s in
+	let wq = IntMap.empty in (* wq is map from rule id to story_events *)
+	let result_map = IntMap.empty in (* result_map maps story_event ids to trace id *)
+	let wq = add_story_events_to_map wq start_events in (* Initialize wq *)
+	let param = (wq, result_map, false) in
+	let (_, _, is_done) = 
+		List.fold_left (step_weak_algorithm s) param (mark_steps_with_id steps)
+	in
+	if is_done then (printf "%s " "matches")
+	else (printf "%s " "doesn't match") 
+
+(***********************************************************************
 * Printing traces for debugging
-*
 *)
 let print_trace env steps = 
   Format.eprintf "@[<v>%a@]" (Pp.list Pp.space KI.print_refined_step) steps
