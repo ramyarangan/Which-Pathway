@@ -2,7 +2,7 @@
   * compression_main.ml 
   *
   * Creation:                      <2011-10-19 16:52:55 feret>
-  * Last modification: Time-stamp: <2015-11-30 09:46:03 feret> 
+  * Last modification: Time-stamp: <2015-12-07 18:48:57 feret> 
   * 
   * Causal flow compression: a module for KaSim 
   * Jerome Feret, projet Antique, INRIA Paris-Rocquencourt
@@ -44,6 +44,8 @@ let th_of_int n =
   | 3 -> (string_of_int n)^"rd"
   | _ -> (string_of_int n)^"th"
 
+let max_number_of_itterations = None
+
 let always = (fun _ -> true)
 let do_not_log parameter = (S.PH.B.PB.CI.Po.K.H.set_log_step parameter false)
 
@@ -52,6 +54,13 @@ let compress_and_print logger env log_info step_list =
   let parameter = S.PH.B.PB.CI.Po.K.H.build_parameter () in
   let parameter = S.PH.B.PB.CI.Po.K.H.set_log_step parameter log_step in
   let parameter = S.PH.B.PB.CI.Po.K.H.set_debugging_mode parameter debug_mode in 
+  let parameter =
+    match
+      max_number_of_itterations
+    with
+    | None -> S.PH.B.PB.CI.Po.K.H.do_not_bound_itterations parameter
+    | Some i -> S.PH.B.PB.CI.Po.K.H.set_itteration_bound parameter i
+  in 
   let parameter =
     if get_all_stories
     then S.PH.B.PB.CI.Po.K.H.set_all_stories_per_obs parameter 
@@ -85,10 +94,10 @@ let compress_and_print logger env log_info step_list =
        && (not strong_compression_on)
     then empty_compression
     else
-      begin (* causal compression *)
-        let parameter = S.PH.B.PB.CI.Po.K.H.set_compression_none parameter in
+      begin 
+	let parameter = S.PH.B.PB.CI.Po.K.H.set_compression_none parameter in
 	let error,log_info,step_list = U.remove_events_after_last_obs parameter always handler log_info error step_list in 
-        if not (U.has_obs step_list) 
+	if not (U.has_obs step_list) 
         then
           let () = Debug.tag logger "+ No causal flow found" in
           empty_compression
@@ -98,127 +107,87 @@ let compress_and_print logger env log_info step_list =
             then Debug.tag logger "+ Producing causal compressions"
             else Debug.tag logger "+ Producing causal traces"
           in
-	  let error,log_info,refined_event_list  = U.split_init parameter  always handler log_info error step_list in 
-	  let error,log_info,refined_event_list_cut =
-            if (weak_compression_on || strong_compression_on)
-	    then
-	      let error,log_info,refined_event_list_wo_siphon =
-		if Graph_closure.ignore_flow_from_outgoing_siphon
-		then
-		  U.fill_siphon parameter always handler log_info error refined_event_list 
-		else
-		  error,log_info,refined_event_list 
-	      in
-	      let () =
-		if debug_mode then
-		  U.print_trace parameter handler refined_event_list_wo_siphon
-	      in
-	      if  Parameter.do_global_cut
-	      then
-		U.cut parameter always handler log_info error refined_event_list_wo_siphon 
-	      else
-		error,log_info,refined_event_list_wo_siphon
-            else
-	      error,log_info,refined_event_list 
-	  in          
-          let deal_with error cut log_info = 
-            let error,log_info,refined_event_list_without_pseudo_inverse = 
-              if cut && Parameter.cut_pseudo_inverse_event 
-              then
-		U.remove_pseudo_inverse_events parameter always handler log_info error refined_event_list_cut  
-	      else 
-                error,log_info,refined_event_list				      
-            in 
-            let () = 
-              if log_step 
-              then 
-                Debug.tag logger "\t - blackboard generation"
-            in 
-            let error,log_info,blackboard = U.convert_trace_into_musical_notation parameter handler error log_info refined_event_list_without_pseudo_inverse in           
-            let () = 
-              if debug_mode && log_step  
-              then 
-                Debug.tag logger "\t - pretty printing the grid"
-            in 
-            let error = 
-              if debug_mode 
-              then 
-                let error = U.export_musical_grid_to_xls parameter handler error "a" 0 0 blackboard in 
-                let error = U.print_musical_grid parameter handler error blackboard in 
-		error
-              else 
-                error 
-            in  
-            let error,list = U.extract_observable_hits_from_musical_notation parameter handler error blackboard in 
-            let n_stories = List.length list in 
-            let () =
-	      if log_step 
-	      then 
-	      Format.fprintf logger "\t - computing causal past of each observed events (%i)@." n_stories 
-	    in
-	    (* generation of uncompressed stories *)
-	    let error,log_info,causal_story_list = 
+	  let error,log_info,step_list = U.split_init parameter always handler log_info error step_list in 
+
+	  (* causal compression without any simplification (just partial order compression)*)
+	  (* this is very costly, and mainly for teaching purpose *)
+	  let error,log_info,causal_table = 
+            if causal_trace_on 
+            then 
               let () = 
-                if debug_mode
-                then 
-                  Debug.tag logger "\t\t * causal compression "
+		if log_step 
+		then 
+                  Debug.tag logger "\t - blackboard generation"
               in 
-              let log_info = U.S.PH.B.PB.CI.Po.K.P.set_start_compression log_info in 
-	      (* We use the grid to get the causal precedence (pred* ) of each observable *)
-	      let grid = U.convert_trace_into_grid refined_event_list_without_pseudo_inverse handler in
-              let enriched_grid =
-		if cut
+              let error,log_info,blackboard = U.convert_trace_into_musical_notation parameter handler error log_info step_list in           
+              let () = 
+		if debug_mode && log_step  
 		then
-		  U.enrich_big_grid_with_transitive_closure logger grid
-		else
-	          U.enrich_std_grid_with_transitive_closure logger grid
-	      in 
-	      let _ = 
-                if Parameter.log_number_of_causal_flows
-                then 
-                  Causal.print_stat logger parameter handler enriched_grid 
+		  Debug.tag logger "\t - pretty printing the grid"
               in 
+              let error = 
+		if debug_mode 
+		then 
+                  let error = U.export_musical_grid_to_xls parameter handler error "a" 0 0 blackboard in 
+                  U.print_musical_grid parameter handler error blackboard 
+		else 
+                  error 
+              in  
+              let error,list = U.extract_observable_hits_from_musical_notation parameter handler error blackboard in 
+              let n_stories = List.length list in 
               let () =
 		if log_step 
 		then 
-		  Format.fprintf logger "\t - %s (%i)@." 
-		    (if store_uncompressed_stories
-		     then
-			"causal flow compression"
-		     else
-		        "causal & weak flow compression") 
-		    n_stories 
+		  Format.fprintf logger "\t - computing causal past of each observed events (%i)@." n_stories 
 	      in
-	      let error,story_list = U.create_story_table parameter handler error in
-	      (*logger n_stories in *)
-              U.fold_left_with_progress_bar logger "causal compression"  
-                (fun (error,log_info,story_list) observable_id -> 
-		 let log_info = S.PH.B.PB.CI.Po.K.P.reset_log log_info in 
-		 let () = 
-                    if debug_mode
-                    then 
-                      Debug.tag logger "\t\t * causal compression "
-                  in 
-		  let error,trace_before_compression = U.causal_prefix_of_an_observable_hit "compression_main, line 2014" parameter handler error log_info blackboard enriched_grid observable_id in 
-                  let info = 
-                    match U.get_runtime_info_from_observable_hit observable_id 
-                    with 
-                    | None -> []
-                    | Some info -> 
-		       let info = {info with Mods.story_id = U.get_counter story_list} in 
-		       let info = Mods.update_profiling_info log_info  info 
-		       in 
-                       [info]
-                  in
-		  if
-		    store_uncompressed_stories || not cut
-		  then
-		    let error,log_info,trace_without_pseudo_inverse_events = 
-                      if cut 
+	      let error,log_info,causal_story_list = 
+		let () = 
+                  if debug_mode
+                  then 
+                    Debug.tag logger "\t\t * causal compression "
+		in 
+		let log_info = U.S.PH.B.PB.CI.Po.K.P.set_start_compression log_info in 
+		(* We use the grid to get the causal precedence (pred* ) of each observable *)
+		let grid = U.convert_trace_into_grid step_list handler in
+		let enriched_grid = U.enrich_std_grid_with_transitive_closure logger grid in 
+		let _ = 
+                  if Parameter.log_number_of_causal_flows
+                  then 
+                    Causal.print_stat logger parameter handler enriched_grid 
+		in 
+		let () =
+		  if log_step 
+		  then 
+		    Format.fprintf logger "\t - %s (%i)@." 
+		      (if store_uncompressed_stories
+		       then
+			  "causal flow compression"
+		       else
+		          "causal & weak flow compression") 
+		      n_stories 
+		in
+		(* we fold the list of obervable hit, and for each one collect the causal past *)
+		U.fold_left_with_progress_bar logger "causal compression"  
+                  (fun (error,log_info,story_list) observable_id -> 
+		    let log_info = S.PH.B.PB.CI.Po.K.P.reset_log log_info in 
+		    let () = 
+                      if debug_mode
                       then 
-			U.remove_pseudo_inverse_events (do_not_log parameter) always handler log_info error trace_before_compression  
-                      else 
-			error,log_info,trace_before_compression
+			Debug.tag logger "\t\t * causal compression "
+                    in 
+		    let error,trace_before_compression = U.causal_prefix_of_an_observable_hit "compression_main, line 2014" parameter handler error log_info blackboard enriched_grid observable_id in 
+                    let info = 
+                      match U.get_runtime_info_from_observable_hit observable_id 
+                      with 
+                      | None -> []
+                      | Some info -> 
+			let info = {info with Mods.story_id = U.get_counter story_list} in 
+			let info = Mods.update_profiling_info log_info  info 
+			in 
+			[info]
+                    in
+		    let error,log_info,trace_without_pseudo_inverse_events = 
+		      error,log_info,trace_before_compression
                     in 
                     let error,log_info,blackboard_cflow = U.convert_trace_into_musical_notation parameter handler error log_info trace_without_pseudo_inverse_events in 
                     let error,observable_hit = U.extract_observable_hit_from_musical_notation "compression_main.ml, line 214, " parameter handler error blackboard_cflow in 		 
@@ -227,41 +196,167 @@ let compress_and_print logger env log_info step_list =
 		    let error,event_list = U.causal_prefix_of_an_observable_hit "" parameter handler error log_info blackboard_cflow enriched_grid observable_hit in 
 		    let error,causal_story_array,log_info = U.store_trace parameter handler error info log_info  event_list story_list in 
 		    error,log_info,causal_story_array  
-		  else
-		    let error,log_info,list = U.weakly_compress logger parameter handler error log_info trace_before_compression in 
-		    let error,story_list,log_info =
-		      List.fold_left
-			(fun (error,story_list,log_info) trace -> 
-			 U.store_trace parameter handler error info log_info trace story_list)
-			(error,story_list,log_info)
-			list
-		    in error,log_info,story_list)
-		
-                (error,log_info,story_list)
+		  )
+	        (error,log_info,table1)
                 (List.rev list)
             in 
-	    let error,causal_story_list = 
-              U.flatten_story_table  parameter handler error causal_story_list 
-	    in 
+	    let error,causal_story_list = U.flatten_story_table  parameter handler error causal_story_list in 
             error,log_info,causal_story_list 
+	    else 
+              error,log_info,table1 
           in
-
-	  let error,log_info,causal_table = 
-            if causal_trace_on 
-            then 
-              deal_with error false log_info 
-            else
-	      let error,table = U.create_story_table parameter handler error in 
-	      error,log_info,table
+	  (* Now causal compression, with detection of siphons & detection of pseudo inverse events *)
+	  let one_iteration_of_compression (log_info,error,event_list) = 
+	    let error,log_info,event_list = 
+	      if Graph_closure.ignore_flow_from_outgoing_siphon
+	      then
+		U.fill_siphon parameter always handler log_info error event_list 
+	      else
+		error,log_info,event_list 
+	    in
+	    let () =
+	      if debug_mode then
+		U.print_trace parameter handler event_list
+	    in
+	    let error,log_info,event_list = 
+	      if  Parameter.do_global_cut
+	      then
+		U.cut parameter always handler log_info error event_list
+	    else
+	      error,log_info,event_list
+	    in 
+	    if Parameter.cut_pseudo_inverse_event 
+	    then
+	      U.remove_pseudo_inverse_events parameter always handler log_info error event_list
+	    else 
+              error,log_info,event_list				      
           in 
-          let error,log_info,causal_story_table = 
+	  let rec aux k (error,log_info,event_list) = 
+	    match 
+	      S.PH.B.PB.CI.Po.K.H.get_bound_on_itteration_number parameter
+	    with 
+	      Some k' when k>=k' -> error,log_info,event_list 
+	    | Some _ | None -> 
+	      let (error,log_info,event_list') = one_iteration_of_compression (log_info,error,event_list) in 
+	      if U.size_of_pretrace event_list' < U.size_of_pretrace event_list
+	      then 
+		aux (k+1) (error,log_info,event_list')
+	      else 
+		error,log_info,event_list'
+	  in 
+	  let error,log_info,causal_story_table = 
             if weak_compression_on || strong_compression_on 
             then 
-              deal_with error true log_info 
-            else
-	      let error,table = U.create_story_table parameter handler error in 
-              error,log_info,table 
-          in 
+	      let error,log_info,simplified_event_list = aux 0 (error,log_info,step_list) in 
+	      let () = 
+		if log_step 
+		then 
+                  Debug.tag logger "\t - blackboard generation"
+              in 
+	      let error,log_info,blackboard = U.convert_trace_into_musical_notation parameter handler error log_info simplified_event_list in           
+              let () = 
+		if debug_mode && log_step  
+		then 
+                  Debug.tag logger "\t - pretty printing the grid"
+              in 
+              let error = 
+		if debug_mode 
+		then 
+                  let error = U.export_musical_grid_to_xls parameter handler error "a" 0 0 blackboard in 
+                  let error = U.print_musical_grid parameter handler error blackboard in 
+		  error
+		else 
+                  error 
+              in  
+              let error,list = U.extract_observable_hits_from_musical_notation parameter handler error blackboard in 
+              let n_stories = List.length list in 
+              let () =
+		if log_step 
+		then 
+		  Format.fprintf logger "\t - computing causal past of each observed events (%i)@." n_stories 
+	      in
+	      (* generation of uncompressed stories *)
+	      let error,log_info,causal_story_list = 
+		let () = 
+                  if debug_mode
+                  then 
+                    Debug.tag logger "\t\t * causal compression "
+		in 
+		let log_info = U.S.PH.B.PB.CI.Po.K.P.set_start_compression log_info in 
+	      (* We use the grid to get the causal precedence (pred* ) of each observable *)
+		let grid = U.convert_trace_into_grid simplified_event_list handler in
+		let enriched_grid =
+		  U.enrich_big_grid_with_transitive_closure logger grid
+		in 
+		let _ = 
+                  if Parameter.log_number_of_causal_flows
+                  then 
+                    Causal.print_stat logger parameter handler enriched_grid 
+		in 
+		let () =
+		  if log_step 
+		  then 
+		    Format.fprintf logger "\t - %s (%i)@." 
+		      (if store_uncompressed_stories
+		       then
+			  "causal flow compression"
+		       else
+		          "causal & weak flow compression") 
+		      n_stories 
+		in
+		(*logger n_stories in *)
+		U.fold_left_with_progress_bar logger "causal compression"  
+                  (fun (error,log_info,story_list) observable_id -> 
+		    let log_info = S.PH.B.PB.CI.Po.K.P.reset_log log_info in 
+		    let () = 
+                      if debug_mode
+                      then 
+			Debug.tag logger "\t\t * causal compression "
+                    in 
+		    let error,trace_before_compression = U.causal_prefix_of_an_observable_hit "compression_main, line 2014" parameter handler error log_info blackboard enriched_grid observable_id in 
+                    let info = 
+                      match U.get_runtime_info_from_observable_hit observable_id 
+                      with 
+                      | None -> []
+                      | Some info -> 
+			let info = {info with Mods.story_id = U.get_counter story_list} in 
+			let info = Mods.update_profiling_info log_info  info 
+			in 
+			[info]
+                    in
+		    if
+		      store_uncompressed_stories 
+		    then
+		      let error,log_info,trace_without_pseudo_inverse_events = 
+                      	U.remove_pseudo_inverse_events (do_not_log parameter) always handler log_info error trace_before_compression  
+                      in 
+                      let error,log_info,blackboard_cflow = U.convert_trace_into_musical_notation parameter handler error log_info trace_without_pseudo_inverse_events in
+		      let error,observable_hit = U.extract_observable_hit_from_musical_notation "compression_main.ml, line 214, " parameter handler error blackboard_cflow in 		 
+		      let grid = U.convert_trace_into_grid trace_without_pseudo_inverse_events handler in 
+                      let enriched_grid = U.enrich_small_grid_with_transitive_closure logger grid in 
+		      let error,event_list = U.causal_prefix_of_an_observable_hit "" parameter handler error log_info blackboard_cflow enriched_grid observable_hit in 
+		      let error,causal_story_array,log_info = U.store_trace parameter handler error info log_info  event_list story_list in 
+		      error,log_info,causal_story_array  
+		    else
+		      let error,log_info,list = U.weakly_compress logger parameter handler error log_info trace_before_compression in 
+		      let error,story_list,log_info =
+			List.fold_left
+			  (fun (error,story_list,log_info) trace -> 
+			    U.store_trace parameter handler error info log_info trace story_list)
+			  (error,story_list,log_info)
+			  list
+		      in error,log_info,story_list)
+		  
+                  (error,log_info,table2)
+                  (List.rev list)
+              in 
+	      let error,causal_story_list = 
+		U.flatten_story_table  parameter handler error causal_story_list 
+	      in 
+              error,log_info,causal_story_list 
+	    else 
+	      error,log_info,table2 
+          in
           let _ = print_newline () in 
           let _ = print_newline () in 
 	  let n_causal_stories = U.count_stories causal_story_table in 

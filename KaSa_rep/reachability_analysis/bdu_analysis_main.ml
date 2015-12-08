@@ -129,7 +129,7 @@ let scan_rule_static parameter error handler rule_id rule covering_classes
 (************************************************************************************)
 (*dynamic analysis*)
 
-let scan_rule_dynamic parameter error handler rule_id rule 
+let scan_rule_dynamic parameter error handler rule_id rule
     store_test_modification_map
     store_covering_classes_id
     store_result =
@@ -152,6 +152,26 @@ let scan_rule_dynamic parameter error handler rule_id rule
       store_test_modification_map
       store_covering_classes_id
   in
+  (*-------------------------------------------------------------------------------*)
+  error, 
+  {
+    store_contact_map                          = store_contact_map;
+    store_covering_classes_modification_update = store_covering_classes_modification_update;
+  }
+
+(************************************************************************************)
+(*rule bdu build*)
+
+let scan_rule_bdu_build parameter handler_bdu error rule_id rule compil
+    covering_classes store_result =
+  (*------------------------------------------------------------------------------*)
+  let error, store_remanent_triple =
+    collect_remanent_triple
+      parameter
+      error
+      covering_classes
+      store_result.store_remanent_triple
+  in
   (*------------------------------------------------------------------------------*)
   (*working list*)
   let error, store_wl_creation =
@@ -160,26 +180,8 @@ let scan_rule_dynamic parameter error handler rule_id rule
       error
       rule_id
       rule
+      store_remanent_triple
       store_result.store_wl_creation
-  in
-  (*-------------------------------------------------------------------------------*)
-  error, 
-  {
-    store_contact_map                          = store_contact_map;
-    store_covering_classes_modification_update = store_covering_classes_modification_update;
-    store_wl_creation                          = store_wl_creation;
-  }
-
-(************************************************************************************)
-(*rule bdu build*)
-
-let scan_rule_bdu_build parameter handler_bdu error rule_id rule covering_classes store_result =
-  let error, store_remanent_triple =
-    collect_remanent_triple
-      parameter
-      error
-      covering_classes
-      store_result.store_remanent_triple
   in
   (*-------------------------------------------------------------------------------*)
   let error, (handler_bdu, store_bdu_test_restriction_map) =
@@ -218,6 +220,16 @@ let scan_rule_bdu_build parameter handler_bdu error rule_id rule covering_classe
       store_bdu_creation_restriction_map
   in
   (*-------------------------------------------------------------------------------*)
+  let error, (handler_bdu, store_bdu_init_restriction_map) =
+    collect_bdu_init_restriction_map
+      parameter
+      handler_bdu
+      error
+      compil
+      store_remanent_triple
+      store_result.store_bdu_init_restriction_map
+  in
+  (*-------------------------------------------------------------------------------*)
   let error, store_modif_list_restriction_map =
     collect_modif_list_restriction_map
       parameter
@@ -238,10 +250,12 @@ let scan_rule_bdu_build parameter handler_bdu error rule_id rule covering_classe
   error, handler_bdu, 
   {
     store_remanent_triple                   = store_remanent_triple;
+    store_wl_creation                       = store_wl_creation;
     store_bdu_test_restriction_map          = store_bdu_test_restriction_map;
     store_proj_bdu_test_restriction_map     = store_proj_bdu_test_restriction_map;
     store_bdu_creation_restriction_map      = store_bdu_creation_restriction_map;
     store_proj_bdu_creation_restriction_map = store_proj_bdu_creation_restriction_map;
+    store_bdu_init_restriction_map          = store_bdu_init_restriction_map;
     store_modif_list_restriction_map        = store_modif_list_restriction_map;
     store_proj_modif_list_restriction_map   = store_proj_modif_list_restriction_map
   }
@@ -256,6 +270,7 @@ let scan_rule_fixpoint parameter handler_bdu error
     store_proj_bdu_creation_restriction_map
     store_proj_modif_list_restriction_map
     store_proj_bdu_test_restriction_map
+    store_bdu_init_restriction_map
     store_bdu_test_restriction_map
     store_covering_classes_modification_update
     store_contact_map
@@ -263,7 +278,6 @@ let scan_rule_fixpoint parameter handler_bdu error
     store_result
     =
   (*-------------------------------------------------------------------------------*)
-  (*TODO*)
   let error, is_new_bond, store_test_has_bond_rhs =
     collect_test_has_bond_rhs
       parameter
@@ -272,6 +286,7 @@ let scan_rule_fixpoint parameter handler_bdu error
       rule
       (snd store_result.store_test_has_bond_rhs)
   in
+  (*-------------------------------------------------------------------------------*)
   let error, store_new_wl_side_effect =
     collect_update_hb_remove_map
       parameter
@@ -281,8 +296,9 @@ let scan_rule_fixpoint parameter handler_bdu error
       store_covering_classes_modification_update
       store_result.store_new_wl_side_effect
   in
-  let error, (handler_bdu, store_bdu_update_map) =
-    collect_bdu_update_map
+  (*-------------------------------------------------------------------------------*)
+  let error, (handler_bdu, store_bdu_fixpoint_map) =
+    collect_bdu_fixpoint_map
       parameter
       handler_bdu
       error
@@ -296,20 +312,22 @@ let scan_rule_fixpoint parameter handler_bdu error
       store_test_has_bond_rhs
       store_new_wl_side_effect
       store_covering_classes_modification_update
+      store_bdu_init_restriction_map
+      store_result.store_bdu_fixpoint_map
   in
   (*-------------------------------------------------------------------------------*)
   error, handler_bdu, 
   {
-    store_test_has_bond_rhs = is_new_bond, store_test_has_bond_rhs;
+    store_test_has_bond_rhs  = is_new_bond, store_test_has_bond_rhs;
     store_new_wl_side_effect = store_new_wl_side_effect;
-    store_bdu_update_map    = store_bdu_update_map;
+    store_bdu_fixpoint_map   = store_bdu_fixpoint_map;
   }
   
 (************************************************************************************)
 (*rule*)
 
-let scan_rule parameter handler_bdu error handler_kappa rule_id rule store_covering_classes
-    compiled store_result =
+let scan_rule parameter handler_bdu error handler_kappa rule_id rule compil 
+    store_covering_classes store_result =
   let covering_classes, covering_class_set = store_covering_classes in
   (*-------------------------------------------------------------------------------*)
   let error, store_bdu_analysis_static =
@@ -342,6 +360,7 @@ let scan_rule parameter handler_bdu error handler_kappa rule_id rule store_cover
       error
       rule_id
       rule
+      compil
       covering_classes
       store_result.store_bdu_build
   in
@@ -353,10 +372,11 @@ let scan_rule parameter handler_bdu error handler_kappa rule_id rule store_cover
       error
       rule_id
       rule
-      store_bdu_analysis_dynamic.store_wl_creation
+      store_bdu_build.store_wl_creation
       store_bdu_build.store_proj_bdu_creation_restriction_map
       store_bdu_build.store_proj_modif_list_restriction_map
       store_bdu_build.store_proj_bdu_test_restriction_map
+      store_bdu_build.store_bdu_init_restriction_map
       store_bdu_build.store_bdu_test_restriction_map
       store_bdu_analysis_dynamic.store_covering_classes_modification_update
       store_bdu_analysis_dynamic.store_contact_map
@@ -406,12 +426,10 @@ let init_bdu_analysis_static =
 let init_bdu_analysis_dynamic parameter error =
   let init_contact_map     = Int2Map_CM_state.Map.empty in
   let init_cv_modification = Int2Map_CV_Modif.Map.empty in
-  let init_wl_creation     = IntWL.empty in
   let init_bdu_analysis_dynamic =
     {
       store_contact_map                          = init_contact_map;
       store_covering_classes_modification_update = init_cv_modification;
-      store_wl_creation                          = init_wl_creation;
     }
   in
   error, init_bdu_analysis_dynamic
@@ -421,19 +439,23 @@ let init_bdu_analysis_dynamic parameter error =
 
 let init_bdu_build parameter error =
   let error, init_remanent_triple            = AgentMap.create parameter error 0 in
+  let init_wl_creation                       = IntWL.empty in
   let init_bdu_test_restriction_map          = Map_test_bdu.Map.empty in
   let init_proj_bdu_test_restriction_map     = Map_final_test_bdu.Map.empty in
   let init_bdu_creation_restriction_map      = Map_creation_bdu.Map.empty in
   let init_proj_bdu_creation_restriction_map = Map_final_creation_bdu.Map.empty in
+  let init_bdu_init_restriction_map          = Map_bdu_update.Map.empty in
   let init_modif_list_restriction_map        = Map_modif_list.Map.empty in
   let init_proj_modif_list_restriction_map   = Map_final_modif_list.Map.empty in
   let init_restriction_bdu_test =
     {
       store_remanent_triple                   = init_remanent_triple;
+      store_wl_creation                       = init_wl_creation;
       store_bdu_test_restriction_map          = init_bdu_test_restriction_map;
       store_proj_bdu_test_restriction_map     = init_proj_bdu_test_restriction_map;
       store_bdu_creation_restriction_map      = init_bdu_creation_restriction_map;
       store_proj_bdu_creation_restriction_map = init_proj_bdu_creation_restriction_map;
+      store_bdu_init_restriction_map          = init_bdu_init_restriction_map;
       store_modif_list_restriction_map        = init_modif_list_restriction_map;
       store_proj_modif_list_restriction_map   = init_proj_modif_list_restriction_map
     }
@@ -446,12 +468,12 @@ let init_bdu_build parameter error =
 let init_bdu_fixpoint parameter error =
   let init_test_has_bond_rhs  = false, Map_test_bond.Map.empty in
   let init_new_wl_side_effect = Int2Map_CV_Modif.Map.empty in
-  let init_bdu_update_map     = Map_bdu_update.Map.empty in
+  let init_bdu_fixpoint_map   = Map_bdu_update.Map.empty in
   let init_bdu_fixpoint =
     {
       store_test_has_bond_rhs  = init_test_has_bond_rhs;
       store_new_wl_side_effect = init_new_wl_side_effect;
-      store_bdu_update_map     = init_bdu_update_map;
+      store_bdu_fixpoint_map   = init_bdu_fixpoint_map;
     }
   in
   error, init_bdu_fixpoint
@@ -459,7 +481,8 @@ let init_bdu_fixpoint parameter error =
 (************************************************************************************)
 (*rules*)
 
-let scan_rule_set parameter handler_bdu error handler_kappa store_covering_classes compiled rules =
+let scan_rule_set parameter handler_bdu error handler_kappa compil store_covering_classes
+    rules =
   let error, init_bdu_analysis_dynamic = init_bdu_analysis_dynamic parameter error in
   let error, init_bdu_build            = init_bdu_build parameter error in
   let error, init_bdu_fixpoint         = init_bdu_fixpoint parameter error in
@@ -484,8 +507,8 @@ let scan_rule_set parameter handler_bdu error handler_kappa store_covering_class
 	    handler_kappa
             rule_id
             rule.e_rule_c_rule
+            compil
             store_covering_classes
-            compiled
             store_result
       ) rules (handler_bdu,init_bdu)
   in
@@ -494,7 +517,7 @@ let scan_rule_set parameter handler_bdu error handler_kappa store_covering_class
 (************************************************************************************)
 (*MAIN*)
 
-let bdu_main parameter error  handler_kappa store_covering_classes cc_compil =
+let bdu_main parameter error handler_kappa store_covering_classes cc_compil =
   let error,handler_bdu = Boolean_mvbdu.init_remanent parameter error in
   let error, (handler_bdu, result) =
     scan_rule_set
@@ -502,8 +525,8 @@ let bdu_main parameter error  handler_kappa store_covering_classes cc_compil =
       handler_bdu
       error 
       handler_kappa 
+      cc_compil
       store_covering_classes
-      cc_compil 
       cc_compil.rules 
   in
   let error =

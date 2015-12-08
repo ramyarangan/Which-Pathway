@@ -103,6 +103,7 @@ module Int2Map_CV_Modif =
 (*type bdu_build_map:
   local information of views that are tested, created and modified with new indexes*)
 
+(*creation*)
 module Map_creation_bdu =
   SetMap.Make (
     struct
@@ -134,6 +135,35 @@ module Map_creation_bdu_ag =
       type t = int (*agent_type*)
       let compare = compare
     end)
+
+(*init state*)
+
+(*module Map_init_bdu =
+  SetMap.Make (
+    struct
+      type t = int * int * int * int
+      let compare = compare
+    end)
+
+module Map_final_init_bdu =
+  SetMap.Make (
+    struct
+      type t = int
+      let compare = compare
+    end
+  )
+
+module Map_agent_type_init_bdu =
+  SetMap.Make (
+    struct
+      type t = int
+      let compare = compare
+    end)
+
+module Project2bdu_init =
+  SetMap.Proj2 (Map_init_bdu) (Map_final_init_bdu) (Map_agent_type_init_bdu)*)
+
+(*test*)
 
 module Map_test_bdu =
   SetMap.Make (
@@ -259,7 +289,6 @@ type bdu_analysis_dynamic =
     (int list * (int * int * int) list) Int2Map_CM_state.Map.t;
     store_covering_classes_modification_update : (*update(c)*)
       (int list * Site_map_and_set.Set.t) Int2Map_CV_Modif.Map.t;
-    store_wl_creation : wl_int;
   }
 
 (************************************************************************************)
@@ -268,6 +297,7 @@ type bdu_analysis_dynamic =
 type bdu_build =
   {
     store_remanent_triple: ((int * int list * Site_map_and_set.Set.t) list) AgentMap.t;
+    store_wl_creation : wl_int;
     store_bdu_test_restriction_map     :
       Mvbdu_wrapper.Mvbdu.mvbdu Map_test_bdu.Map.t;
     store_proj_bdu_test_restriction_map :
@@ -277,6 +307,8 @@ type bdu_build =
     store_proj_bdu_creation_restriction_map :
       Mvbdu_wrapper.Mvbdu.mvbdu Map_agent_type_creation_bdu.Map.t
       Map_final_creation_bdu.Map.t;
+    store_bdu_init_restriction_map :
+      Mvbdu_wrapper.Mvbdu.mvbdu Map_bdu_update.Map.t;
     store_modif_list_restriction_map :
       ((int * int) list) Map_modif_list.Map.t;
     store_proj_modif_list_restriction_map :
@@ -291,7 +323,7 @@ type bdu_fixpoint =
       store_test_has_bond_rhs : bool * Map_site_address.Set.t Map_test_bond.Map.t;
       store_new_wl_side_effect :
 	(int list * Site_map_and_set.Set.t) Int2Map_CV_Modif.Map.t;
-      store_bdu_update_map :
+      store_bdu_fixpoint_map :
 	Mvbdu_wrapper.Mvbdu.mvbdu Map_bdu_update.Map.t;
   }
 
