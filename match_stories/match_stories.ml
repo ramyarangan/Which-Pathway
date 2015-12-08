@@ -48,8 +48,12 @@ type story_t = (adjacency_list_t * adjacency_list_t) * (StoryEvent.t list)
 * from user input depending on the story the user is searching for.
 *)
 let find_id_for_rule env name = 
-	(* Environment.num_of_rule (Location.dummy_annot name) env *)
-	1
+	let rule_id_list = Environment.nums_of_rule name env in
+	if (List.length rule_id_list) = 0 then (
+		printf "%s %s" "failed to find rule: " name;
+		None
+	)
+	else (Some (List.hd rule_id_list))
 
 let find_all_applications env steps = 
 	let map = IntMap.empty in 
@@ -57,25 +61,31 @@ let find_all_applications env steps =
 		match step with
 		| KI.Event ((Causal.RULE (rule)), inst) ->
 				map_add_val_to_list map rule inst
-		| KI.Event _ | KI.Subs _ | KI.Dummy _ | KI.Obs _ | KI.Init _ -> map
+		| _ -> map
 	in
 	List.fold_left (find_application env) map steps 
 
-(* TODO: Change x, y below...figure out how we are id'ing elements. *)
 let create_toy_story env steps = 
 	let get_rand_element l = List.nth l (Random.int (List.length l)) in
-	let map = find_all_applications env steps in (* Need to handle if x not in map *)
-	let x_id = (find_id_for_rule env "x") in
-	let y_id = (find_id_for_rule env "y") in
-	let x_event : StoryEvent.t = 
-		(0, (x_id, get_rand_element (IntMap.find x_id map))) in 
-	let y_event : StoryEvent.t = 
-		(1, (y_id, get_rand_element (IntMap.find y_id map))) in
-	let forward_list : adjacency_list_t = IntMap.singleton 0 [y_event] in
-	let reverse_list : adjacency_list_t = IntMap.singleton 1 [x_event] in
-	let start_events = [x_event] in
-	((forward_list, reverse_list), start_events)
-
+	let map = find_all_applications env steps in
+	let x_id_option = (find_id_for_rule env "x") in
+	let y_id_option = (find_id_for_rule env "y") in
+	match (x_id_option, y_id_option) with 
+	| (Some x_id, Some y_id) -> (
+		match ((IntMap.mem x_id map), (IntMap.mem y_id map)) with
+		| (true, true) -> (
+			let x_event : StoryEvent.t = 
+			(0, (x_id, get_rand_element (IntMap.find x_id map))) in 
+			let y_event : StoryEvent.t = 
+				(1, (y_id, get_rand_element (IntMap.find y_id map))) in
+			let forward_list : adjacency_list_t = IntMap.singleton 0 [y_event] in
+			let reverse_list : adjacency_list_t = IntMap.singleton 1 [x_event] in
+			let start_events = [x_event] in
+			Some ((forward_list, reverse_list), start_events)
+		)
+		| _ -> None
+	)
+	| _ -> None
 
 (******************************************************************************
 * Weak compression matching helpers and algorithm 
@@ -138,17 +148,21 @@ let step_weak_algorithm (s : story_t) (wq, result_map, is_done) mark_step =
 (* Does OCaml have a HashMap implementation? Otherwise, consider using HashTbl
  * when possible, because these are log n lookups. *)
 let check_weak_story_embeds env steps = 
-	let s = (create_toy_story env steps) in
-	let ((_, _), start_events) = s in
-	let wq = IntMap.empty in (* wq is map from rule id to story_events *)
-	let result_map = IntMap.empty in (* result_map maps story_event ids to trace id *)
-	let wq = add_story_events_to_map wq start_events in (* Initialize wq *)
-	let param = (wq, result_map, false) in
-	let (_, _, is_done) = 
-		List.fold_left (step_weak_algorithm s) param (mark_steps_with_id steps)
-	in
-	if is_done then (printf "%s " "matches")
-	else (printf "%s " "doesn't match") 
+	let s_option = (create_toy_story env steps) in
+	match s_option with
+	| Some s -> (
+		let ((_, _), start_events) = s in
+		let wq = IntMap.empty in (* wq is map from rule id to story_events *)
+		let result_map = IntMap.empty in (* result_map maps story_event ids to trace id *)
+		let wq = add_story_events_to_map wq start_events in (* Initialize wq *)
+		let param = (wq, result_map, false) in
+		let (_, _, is_done) = 
+			List.fold_left (step_weak_algorithm s) param (mark_steps_with_id steps)
+		in
+		if is_done then (printf "%s " "matches")
+		else (printf "%s " "doesn't match") 
+	)
+	| None -> (printf "%s" "could not load test story")  
 
 (***********************************************************************
 * Printing traces for debugging
