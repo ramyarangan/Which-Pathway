@@ -18,9 +18,9 @@ KASAREP = KaSa_rep/
 
 TERM = $(shell echo $$TERM)
 ifeq ($(TERM), dumb) # An approximation of "am I launched from emacs ?" :-)
- OCAMLBUILDFLAGS = -classic-display
+ OCAMLBUILDFLAGS = -classic-display $(EXTRAFLAGS)
 else
- OCAMLBUILDFLAGS =
+ OCAMLBUILDFLAGS = $(EXTRAFLAGS)
 endif
 
 USE_TK?=0
@@ -36,7 +36,7 @@ SCRIPTSWITNESS = $(SCRIPTSSOURCE:.sh=.witness)
 MODELS = $(wildcard $(MANKAPPAMODELSREP)*.ka)
 
 .PHONY: all clean temp-clean-for-ignorant-that-clean-must-be-done-before-fetch
-.PHONY: check build-tests doc clean_doc fetch_version on_linux_for_windows
+.PHONY: check build-tests doc clean_doc fetch_version on_linux_for_windows debug
 
 .PRECIOUS: $(SCRIPTSWITNESS)
 
@@ -90,6 +90,9 @@ bin/%: %.native Makefile
 doc: man/KaSim_manual.pdf
 doc_html: dev/KaSim.docdir/index.html man/KaSim_manual.htm
 
+debug:
+	@+$(MAKE) EXTRAFLAGS="-tag debug" KaSim.byte dev/db_printers.cma
+
 all: bin/KaSim bin/KaSa
 
 clean_doc:
@@ -108,6 +111,7 @@ clean: temp-clean-for-ignorant-that-clean-must-be-done-before-fetch clean_doc
 	+$(MAKE) KAPPABIN="$(CURDIR)/bin/" -C models/test_suite clean
 
 check: bin/sanity_test
+	@+$(MAKE) KAPPABIN="$(CURDIR)/bin/" -C models/test_suite clean
 	@+$(MAKE) KAPPABIN="$(CURDIR)/bin/" -C models/test_suite all
 
 build-tests: bin/sanity_test

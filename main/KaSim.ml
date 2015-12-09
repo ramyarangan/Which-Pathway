@@ -1,5 +1,3 @@
-open Mods
-
 let usage_msg =
   "KaSim "^Version.version_string^":\n"^
     "Usage is KaSim [-i] input_file [-e events | -t time] [-p points] [-o output_file]\n"
@@ -10,6 +8,10 @@ let close_desc opt_env =
   match opt_env with
   | None -> ()
   | Some env -> Environment.close_desc env
+
+let (maxEventValue:int option ref) = ref None
+let (maxTimeValue:float option ref) = ref None
+let (pointNumberValue:int ref) = ref 0
 
 let () =
   let options = [
@@ -22,15 +24,13 @@ let () =
 		 Parameter.inputKappaFileNames:= fic:: (!Parameter.inputKappaFileNames)),
      "name of a kappa file to use as input (can be used multiple times for multiple input files)");
     ("-e",
-     Arg.Int (fun i -> if i < 0 then Parameter.maxEventValue := None
-		       else let () = Parameter.maxTimeValue:= None in
-			    Parameter.maxEventValue := Some i),
+     Arg.Int (fun i -> if i < 0 then maxEventValue := None
+		       else maxEventValue := Some i),
      "Number of total simulation events, including null events (negative value for unbounded simulation)");
     ("-t",
-     Arg.Float(fun t -> Parameter.maxTimeValue := Some t ;
-			Parameter.maxEventValue := None),
+     Arg.Float(fun t -> maxTimeValue := Some t),
      "Max time of simulation (arbitrary time unit)");
-    ("-p", Arg.Set_int Parameter.pointNumberValue,
+    ("-p", Arg.Set_int pointNumberValue,
      "Number of points in plot");
     ("-var",
      Arg.Tuple
@@ -135,10 +135,14 @@ let () =
     Format.printf
       "+ Initialized random number generator with seed %d@." theSeed;
 
-    let (kasa_state,env, cc_env, counter, graph, new_state) =
+    let counter =
+      Counter.create !pointNumberValue 0.0 0
+		     !maxTimeValue !maxEventValue in
+    let (kasa_state,env, cc_env, graph, new_state) =
       match !Parameter.marshalizedInFile with
       | "" ->
-	 Eval.initialize Format.std_formatter !Parameter.alg_var_overwrite result
+	 Eval.initialize
+	   Format.std_formatter !Parameter.alg_var_overwrite counter result
       | marshalized_file ->
 	 try
 	   let d = open_in_bin marshalized_file in
@@ -150,13 +154,13 @@ let () =
 	     else
 	       Format.printf "+Loading simulation package %s...@."
 			     marshalized_file in
-	   let kasa_state,env,cc_env,counter,graph,new_state =
+	   let kasa_state,env,cc_env,graph,new_state =
 	     (Marshal.from_channel d :
-		Export_to_KaSim.Export_to_KaSim.state*Environment.t*Connected_component.Env.t*Counter.t*
+		Export_to_KaSim.Export_to_KaSim.state*Environment.t*Connected_component.Env.t*
 		  Rule_interpreter.t * State_interpreter.t) in
 	   let () = Pervasives.close_in d  in
 	   let () = Format.printf "Done@." in
-	   (kasa_state,env,cc_env,counter,graph,new_state)
+	   (kasa_state,env,cc_env,graph,new_state)
 	 with
 	 | _exn ->
 	    Debug.tag
@@ -178,9 +182,9 @@ let () =
 
     let () = Plot.create (Kappa_files.get_data ()) in
     let () =
-      if !Parameter.pointNumberValue > 0 then
+      if !pointNumberValue > 0 then
 	Plot.plot_now
-	  env counter.Mods.Counter.time
+	  env (Counter.current_time counter)
 	  (State_interpreter.observables_values env counter graph new_state) in
 
     Parameter.initSimTime () ;
@@ -188,13 +192,14 @@ let () =
       State_interpreter.loop Format.std_formatter env cc_env counter graph new_state
     in
     Format.printf "Simulation ended";
-    if Counter.null_event counter = 0 then Format.print_newline()
+    if Counter.nb_null_event counter = 0 then Format.print_newline()
     else
       let () =
 	Format.printf " (eff.: %f, detail below)@."
-		      ((float_of_int (Counter.event counter)) /.
+		      ((float_of_int (Counter.current_event counter)) /.
 			 (float_of_int
-			    (Counter.null_event counter + Counter.event counter))) in
+			    (Counter.nb_null_event counter +
+			       Counter.current_event counter))) in
       Counter.print_efficiency Format.std_formatter counter ;
   with
   | ExceptionDefn.Malformed_Decl er ->
