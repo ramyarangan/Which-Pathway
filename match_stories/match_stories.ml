@@ -43,7 +43,7 @@ module StoryEvent =
 type adjacency_list_t = (StoryEvent.t list) IntMap.t 
 type story_t = (adjacency_list_t * adjacency_list_t) * (StoryEvent.t list)
 
-(**************************************************************************
+(****************************************************************************
 * Create test story. This is a hack. Eventually we will read this 
 * from user input depending on the story the user is searching for.
 *)
