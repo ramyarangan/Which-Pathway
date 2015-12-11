@@ -5,21 +5,18 @@
   Location.of_pos (Parsing.rhs_start_pos i) (Parsing.rhs_end_pos i)
 %}
 
-%token EOF NEWLINE SEMICOLON COMMA DOT OP_PAR CL_PAR OP_CUR CL_CUR
-%token AT TYPE LAR CPUTIME EMAX TMAX PLOTNUM PLOTENTRY DELETE INTRO TRACK
-%token DO SET REPEAT UNTIL LOG PLUS MULT MINUS MAX MIN DIV SINUS COSINUS TAN
-%token POW ABS MODULO SQRT EXPONENT INFINITY TIME EVENT NULL_EVENT
-%token EQUAL AND OR GREATER SMALLER TRUE FALSE DIFF KAPPA_RAR KAPPA_LRAR
-%token <Tools.pos> PERT OBS CONFIG
-%token <Tools.pos> KAPPA_WLD KAPPA_SEMI SIGNATURE INIT LET PLOT
-%token <Tools.pos> FLUX ASSIGN ASSIGN2 TOKEN KAPPA_LNK PIPE
-%token <Tools.pos> PRINT PRINTF
+%token EOF NEWLINE SEMICOLON COMMA DOT OP_PAR CL_PAR OP_CUR CL_CUR AT TYPE LAR
+%token CPUTIME EMAX TMAX PLOTNUM PLOTENTRY DELETE INTRO TRACK DO SET REPEAT
+%token UNTIL LOG PLUS MULT MINUS MAX MIN DIV SINUS COSINUS TAN POW ABS MODULO
+%token SQRT EXPONENT INFINITY TIME EVENT NULL_EVENT PIPE EQUAL AND OR
+%token GREATER SMALLER TRUE FALSE DIFF KAPPA_RAR KAPPA_LRAR KAPPA_LNK
+%token SIGNATURE INIT LET PLOT PERT OBS TOKEN CONFIG KAPPA_WLD KAPPA_SEMI
+%token FLUX ASSIGN ASSIGN2 PRINT PRINTF STOP SNAPSHOT
 %token <int> INT
 %token <string> ID
 %token <string> KAPPA_MRK LABEL
 %token <float> FLOAT
-%token <string*Tools.pos> STRING
-%token <Tools.pos> STOP SNAPSHOT
+%token <string> STRING
 
 %left MINUS PLUS
 %left MULT DIV
@@ -61,9 +58,9 @@ start_rule:
 		      | Ast.VOLSIG (vol_type,vol,vol_param) ->
 			 (Ast.result := {!Ast.result with
 					  Ast.volumes=(vol_type,vol,vol_param)::!Ast.result.Ast.volumes})
-		      | Ast.INIT (opt_vol,init_t,pos) ->
+		      | Ast.INIT (opt_vol,init_t) ->
 			 (Ast.result := {!Ast.result with
-					  Ast.init=(opt_vol,init_t,pos)::!Ast.result.Ast.init})
+					  Ast.init=(opt_vol,init_t)::!Ast.result.Ast.init})
 		      | Ast.DECLARE var ->
 			 (Ast.result := {!Ast.result with
 					  Ast.variables = var::!Ast.result.Ast.variables})
@@ -98,7 +95,7 @@ instruction:
 				(add_pos "Malformed agent signature, I was expecting something of the form '%agent: A(x,y~u~v,z)'"))}
 
     | INIT init_declaration
-	   {let (opt_vol,init) = $2 in Ast.INIT (opt_vol,init,$1)}
+	   {let (opt_vol,init) = $2 in Ast.INIT (opt_vol,init)}
     | INIT error
 	{ raise (ExceptionDefn.Syntax_Error
 		   (add_pos "Malformed initial condition"))}
@@ -131,7 +128,7 @@ instruction:
 			    f "Perturbation need not be applied repeatedly") in
 	    Ast.PERT (add_pos (bool_expr,mod_expr_list,Some $5))}
     | CONFIG STRING value_list
-	     {Ast.CONFIG ((fst $2,rhs_pos 2),$3)}
+	     {Ast.CONFIG (($2,rhs_pos 2),$3)}
     | PERT bool_expr DO effect_list UNTIL bool_expr
       /* backward compatibility */
 	   {ExceptionDefn.deprecated
@@ -152,8 +149,8 @@ init_declaration:
     ;
 
 value_list:
-    | STRING {[$1]}
-    | STRING value_list {$1::$2}
+    | STRING {[$1, rhs_pos 1]}
+    | STRING value_list {($1,rhs_pos 1)::$2}
     ;
 
 perturbation_declaration:
@@ -194,7 +191,7 @@ effect:
     | TRACK non_empty_mixture boolean
 	    {Ast.CFLOWMIX ($3,($2,rhs_pos 2))}
     | FLUX print_expr boolean
-	   {if $3 then Ast.FLUX ($2,$1) else Ast.FLUXOFF ($2,$1)}
+	   {if $3 then Ast.FLUX $2 else Ast.FLUXOFF $2}
     | INTRO multiple_mixture
 	    {let (alg,mix) = $2 in Ast.INTRO (alg,mix)}
     | INTRO error
@@ -207,19 +204,19 @@ effect:
 		  (add_pos "Malformed perturbation instruction, I was expecting '$DEL alg_expression kappa_expression'"))}
     | ID LAR alg_expr /*updating the value of a token*/
 						{Ast.UPDATE_TOK (($1,rhs_pos 1),$3)}
-    | SNAPSHOT print_expr {Ast.SNAPSHOT ($2,$1)}
-    | STOP print_expr {Ast.STOP ($2,$1)}
-    | PRINT SMALLER print_expr GREATER {(Ast.PRINT ([],$3,$1))}
-    | PRINTF print_expr SMALLER print_expr GREATER { Ast.PRINT ($2,$4,$1) }
+    | SNAPSHOT print_expr {Ast.SNAPSHOT $2}
+    | STOP print_expr {Ast.STOP $2}
+    | PRINT SMALLER print_expr GREATER {(Ast.PRINT ([],$3))}
+    | PRINTF print_expr SMALLER print_expr GREATER { Ast.PRINT ($2,$4) }
     | PLOTENTRY { Ast.PLOTENTRY }
     ;
 
 print_expr:
   /*empty*/ {[]}
-    | STRING {[add_pos (Ast.Str_pexpr (fst $1))]}
-    | alg_expr {[add_pos (Ast.Alg_pexpr (fst $1))]}
-    | STRING DOT print_expr {(add_pos (Ast.Str_pexpr (fst $1)))::$3}
-    | alg_expr DOT print_expr {(add_pos (Ast.Alg_pexpr (fst $1)))::$3}
+    | STRING {[Ast.Str_pexpr (add_pos $1)]}
+    | alg_expr {[Ast.Alg_pexpr $1]}
+    | STRING DOT print_expr {Ast.Str_pexpr ($1, rhs_pos 1)::$3}
+    | alg_expr DOT print_expr {Ast.Alg_pexpr $1::$3}
     ;
 
 boolean:
@@ -287,29 +284,17 @@ mixture:
 ;
 
 rule_expression:
-    | rule_label lhs_rhs arrow lhs_rhs AT rate
+    | rule_label lhs_rhs arrow lhs_rhs rate
 		 { let pos =
 		     Location.of_pos (Parsing.rhs_start_pos 2)
 				     (Parsing.symbol_end_pos ()) in
-		   let (k2,k1,kback) = $6 in
+		   let (absolute,k2,k1,kback) = $5 in
 		   let lhs,token_l = $2 and rhs,token_r = $4 in
 		   ($1,({Ast.lhs=lhs; Ast.rm_token = token_l; Ast.arrow=$3;
 			 Ast.rhs=rhs; Ast.add_token = token_r;
+			 Ast.k_absolute=absolute;
 			 Ast.k_def=k2; Ast.k_un=k1; Ast.k_op=kback},pos))
 		 }
-    | rule_label lhs_rhs arrow lhs_rhs
-		 {let pos =
-		    Location.of_pos (Parsing.rhs_start_pos 2)
-				    (Parsing.symbol_end_pos ()) in
-		  let lhs,token_l = $2 and rhs,token_r = $4 in
-		  ExceptionDefn.warning
-		    ~pos
-		    (fun f -> Format.pp_print_string
-				f "Rule has no kinetics. Default rate of 0.0 is assumed.");
-		  ($1,({Ast.lhs = lhs; Ast.rm_token = token_l; Ast.arrow=$3;
-			Ast.rhs=rhs; Ast.add_token = token_r;
-			Ast.k_def=Location.dummy_annot (Ast.CONST (Nbr.F 0.));
-			Ast.k_un=None; Ast.k_op=None},pos))}
     ;
 
 arrow:
@@ -364,9 +349,19 @@ alg_expr:
     | alg_expr MODULO alg_expr {add_pos (Ast.BIN_ALG_OP(Operator.MODULO,$1,$3))}
 
 rate:
-    | alg_expr OP_PAR alg_with_radius CL_PAR {($1,Some $3,None)}
-    | alg_expr {($1,None,None)}
-    | alg_expr COMMA alg_expr {($1,None,Some $3)}
+    | AT alg_expr OP_PAR alg_with_radius CL_PAR {(false,$2,Some $4,None)}
+    | AT alg_expr {(false,$2,None,None)}
+    | AT alg_expr COMMA alg_expr {(false,$2,None,Some $4)}
+    | AT AT alg_expr OP_PAR alg_with_radius CL_PAR {(true,$3,Some $5,None)}
+    | AT AT alg_expr {(true,$3,None,None)}
+    | AT AT alg_expr COMMA alg_expr {(true,$3,None,Some $5)}
+    | {let pos =
+        Location.of_pos (Parsing.symbol_start_pos ()) (Parsing.symbol_end_pos ()) in
+      let () = ExceptionDefn.warning
+		  ~pos
+		  (fun f -> Format.pp_print_string
+				f "Rule has no kinetics. Default rate of 0.0 is assumed.") in
+				(false,Location.dummy_annot (Ast.CONST (Nbr.F 0.)),None,None)}
     ;
 
 alg_with_radius:

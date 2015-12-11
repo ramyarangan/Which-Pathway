@@ -45,7 +45,7 @@ type enriched_grid =
     {
       config:config;
       depth:int;
-      prec_star: int list array ; (*decreasing*)
+      prec_star: (int list array * Graph_closure.order); (*decreasing*)
       depth_of_event: int Mods.IntMap.t ;
       size:int;
     }
@@ -393,13 +393,8 @@ let config_of_grid = cut
       IntMap.add eid set prec_star
     ) config.events IntMap.empty *)
 
-let prec_star_of_config err_fmt config_closure prec to_keep init_to_eidmax
-			weak_events init =
-  let a =
-    Graph_closure.closure err_fmt config_closure prec to_keep
-			  init_to_eidmax weak_events init in
-  Graph_closure.A.map fst a
-
+let prec_star_of_config = Graph_closure.closure
+			   
 let depth_and_size_of_event config =
   IntMap.fold
     (fun eid prec_eids (emap,_) ->
@@ -419,17 +414,12 @@ let enrich_grid err_fmt config_closure grid =
   let to_keep i = IntSet.mem i keep_l in
   let ids = ids_of_grid grid  in
   let config = config_of_grid ids grid in
-  let init_fun i =
-    try
-      List.rev (Mods.IntSet.elements (Mods.IntSet.remove
-					i (Hashtbl.find grid.init_tbl i)))
-    with _ -> [] in
   let init_to_eid_max i =
     try Hashtbl.find grid.init_to_eidmax i
     with Not_found -> 0 in
   let prec_star = prec_star_of_config
 		    err_fmt config_closure config.prec_1 to_keep
-		    init_to_eid_max (fun _ -> true)  init_fun in
+		    init_to_eid_max in
   let depth_of_event,depth = depth_and_size_of_event config in
   {
     config = config ;
@@ -511,7 +501,7 @@ let dot_of_grid profiling env enriched_grid form =
   IntMap.iter
     (fun eid cflct_set ->
      if eid <> 0 then
-       let prec = try prec_star.(eid) with _ -> [] in
+       let prec = try (fst prec_star).(eid) with _ -> [] in
        let _ =
          IntSet.fold_inv
            (fun eid' prec ->
@@ -698,20 +688,27 @@ let pretty_print err_fmt env config_closure compression_type label story_list =
      Format.fprintf form "@]@?")
 
 let print_stat f parameter handler enriched_grid =
-  let size = Array.length enriched_grid.prec_star in
+  let count_obs =
+    match
+      snd enriched_grid.prec_star
+    with
+      Graph_closure.Increasing_with_last_event -> (fun x -> x)
+    | Graph_closure.Decreasing_without_last_event -> succ
+  in 
+  let size = Array.length (fst enriched_grid.prec_star) in
   let rec aux k n_step longest_story n_nonempty length_sum length_square_sum =
     if k>=size
     then (n_step,longest_story,n_nonempty,length_sum,length_square_sum)
     else
-      let cc = List.length (Array.get enriched_grid.prec_star k) in
-      aux (k+1) (n_step+1) (max longest_story cc)
+      let cc = List.length (Array.get (fst enriched_grid.prec_star) k) in
+      let cc' = if cc>0 then count_obs cc else cc in 
+      aux (k+1) (n_step+1) (max longest_story  cc')
         (if cc>0 then n_nonempty+1 else n_nonempty)
-        (length_sum+cc) (length_square_sum+cc*cc) in
+        (length_sum+cc') (length_square_sum+cc'*cc') in
   let n_step,longest_story,n_nonempty,length_sum,length_square_sum =
     aux 0 0 0 0 0 0 in
   let () = Format.fprintf f  "@[<v>Stats:@," in
   let () = Format.fprintf f " number of step   : %i@," n_step in
-(*  let () = Format.fprintf f " number of stories: %i@," n_nonempty in *)
   let () = Format.fprintf f " longest story    : %i@," longest_story in
   let () = Format.fprintf f " average length   : %F@,"
 			  (float length_sum /. float n_nonempty) in

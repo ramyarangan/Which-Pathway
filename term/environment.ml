@@ -10,6 +10,7 @@ type t = {
   need_update_each_loop : Operator.DepSet.t;
   algs_reverse_dependencies : Operator.DepSet.t array;
   tokens_reverse_dependencies : Operator.DepSet.t array;
+
   desc_table : (string,out_channel * Format.formatter) Hashtbl.t;
 }
 
@@ -50,7 +51,7 @@ let nb_rules env = Array.length env.rules
 let nums_of_rule name env =
   fold_rules
     (fun i acc r ->
-      match env.ast_rules.(r.Primitives.syntactic_rule) with
+      match env.ast_rules.(pred r.Primitives.syntactic_rule) with
       | Some (x,_), _ -> if x = name then i::acc else acc
       | None, _ -> acc)
     [] env

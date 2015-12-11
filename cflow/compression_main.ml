@@ -2,7 +2,7 @@
   * compression_main.ml 
   *
   * Creation:                      <2011-10-19 16:52:55 feret>
-  * Last modification: Time-stamp: <2015-12-07 18:48:57 feret> 
+  * Last modification: Time-stamp: <2015-12-11 12:04:55 feret> 
   * 
   * Causal flow compression: a module for KaSim 
   * Jerome Feret, projet Antique, INRIA Paris-Rocquencourt
@@ -149,7 +149,7 @@ let compress_and_print logger env log_info step_list =
 		let log_info = U.S.PH.B.PB.CI.Po.K.P.set_start_compression log_info in 
 		(* We use the grid to get the causal precedence (pred* ) of each observable *)
 		let grid = U.convert_trace_into_grid step_list handler in
-		let enriched_grid = U.enrich_std_grid_with_transitive_closure logger grid in 
+		let enriched_grid = U.enrich_grid_with_transitive_past_of_each_node_without_a_progress_bar logger grid in 
 		let _ = 
                   if Parameter.log_number_of_causal_flows
                   then 
@@ -186,15 +186,7 @@ let compress_and_print logger env log_info step_list =
 			in 
 			[info]
                     in
-		    let error,log_info,trace_without_pseudo_inverse_events = 
-		      error,log_info,trace_before_compression
-                    in 
-                    let error,log_info,blackboard_cflow = U.convert_trace_into_musical_notation parameter handler error log_info trace_without_pseudo_inverse_events in 
-                    let error,observable_hit = U.extract_observable_hit_from_musical_notation "compression_main.ml, line 214, " parameter handler error blackboard_cflow in 		 
-		    let grid = U.convert_trace_into_grid trace_without_pseudo_inverse_events handler in 
-                    let enriched_grid = U.enrich_small_grid_with_transitive_closure logger grid in 
-		    let error,event_list = U.causal_prefix_of_an_observable_hit "" parameter handler error log_info blackboard_cflow enriched_grid observable_hit in 
-		    let error,causal_story_array,log_info = U.store_trace parameter handler error info log_info  event_list story_list in 
+		    let error,causal_story_array,log_info = U.store_trace parameter handler error info log_info  trace_before_compression story_list in 
 		    error,log_info,causal_story_array  
 		  )
 	        (error,log_info,table1)
@@ -286,7 +278,7 @@ let compress_and_print logger env log_info step_list =
 	      (* We use the grid to get the causal precedence (pred* ) of each observable *)
 		let grid = U.convert_trace_into_grid simplified_event_list handler in
 		let enriched_grid =
-		  U.enrich_big_grid_with_transitive_closure logger grid
+		  U.enrich_grid_with_transitive_past_of_observables_with_a_progression_bar logger grid
 		in 
 		let _ = 
                   if Parameter.log_number_of_causal_flows
@@ -330,15 +322,17 @@ let compress_and_print logger env log_info step_list =
 		      let error,log_info,trace_without_pseudo_inverse_events = 
                       	U.remove_pseudo_inverse_events (do_not_log parameter) always handler log_info error trace_before_compression  
                       in 
-                      let error,log_info,blackboard_cflow = U.convert_trace_into_musical_notation parameter handler error log_info trace_without_pseudo_inverse_events in
-		      let error,observable_hit = U.extract_observable_hit_from_musical_notation "compression_main.ml, line 214, " parameter handler error blackboard_cflow in 		 
-		      let grid = U.convert_trace_into_grid trace_without_pseudo_inverse_events handler in 
-                      let enriched_grid = U.enrich_small_grid_with_transitive_closure logger grid in 
-		      let error,event_list = U.causal_prefix_of_an_observable_hit "" parameter handler error log_info blackboard_cflow enriched_grid observable_hit in 
-		      let error,causal_story_array,log_info = U.store_trace parameter handler error info log_info  event_list story_list in 
+                      let error,log_info,trace_without_pseudo_inverse_events = 
+			U.cut (do_not_log parameter) always handler log_info error trace_without_pseudo_inverse_events
+		      in 
+		      let error,causal_story_array,log_info = 
+			U.store_trace parameter handler error info log_info trace_without_pseudo_inverse_events  story_list 
+		      in 
 		      error,log_info,causal_story_array  
 		    else
-		      let error,log_info,list = U.weakly_compress logger parameter handler error log_info trace_before_compression in 
+		      let error,log_info,list = 
+			U.weakly_compress logger parameter handler error log_info trace_before_compression 
+		      in 
 		      let error,story_list,log_info =
 			List.fold_left
 			  (fun (error,story_list,log_info) trace -> 
@@ -371,9 +365,7 @@ let compress_and_print logger env log_info step_list =
                   let parameter = S.PH.B.PB.CI.Po.K.H.set_compression_weak parameter in 
                   let error,weak_stories_table =  U.create_story_table parameter handler error in 		
                   let error,(log_info,weakly_story_table) = 
-		    U.fold_story_table_with_progress_bar
-		      logger parameter handler error 
-		      "weak compression" 
+		    U.fold_story_table_with_progress_bar logger parameter handler error "weak compression" 
 		      (fun parameter handler error trace info (log_info,story_list) ->
 		       let error,log_info,list = U.weakly_compress logger parameter handler error log_info trace in 
 		       let error,story_list,log_info =
@@ -441,21 +433,21 @@ let compress_and_print logger env log_info step_list =
   let error =
     if causal_trace_on then
       let error,export = U.export_story_table parameter handler error causal in 
-      let () = Causal.pretty_print logger env Graph_closure.config_std "" "" export in
+      let () = Causal.pretty_print logger env Graph_closure.config_small_graph "" "" export in
       error
     else error
   in
   let error =
     if weak_compression_on then
       let error,export = U.export_story_table parameter handler error weak in
-      let () = Causal.pretty_print logger env Graph_closure.config_std "Weakly" "weakly " export in
+      let () = Causal.pretty_print logger env Graph_closure.config_small_graph "Weakly" "weakly " export in
       error
     else error
   in
   let error = 
     if strong_compression_on then
       let error,export = U.export_story_table parameter handler error strong in
-      let () = Causal.pretty_print logger env Graph_closure.config_std "Strongly" "strongly " export in
+      let () = Causal.pretty_print logger env Graph_closure.config_small_graph "Strongly" "strongly " export in
       error
     else
       error 

@@ -28,14 +28,14 @@ let alg_expr ?env f alg =
 
 let print_expr ?env f e =
   let aux f = function
-    | Ast.Str_pexpr str,_ -> Format.fprintf f "\"%s\"" str
-    | Ast.Alg_pexpr alg,_ -> alg_expr ?env f alg
+    | Ast.Str_pexpr (str,_) -> Format.fprintf f "\"%s\"" str
+    | Ast.Alg_pexpr (alg,_) -> alg_expr ?env f alg
   in Pp.list (fun f -> Format.fprintf f ".") aux f e
 
 let print_expr_val alg_val f e =
   let aux f = function
-    | Ast.Str_pexpr str,_ -> Format.pp_print_string f str
-    | Ast.Alg_pexpr alg,_ ->
+    | Ast.Str_pexpr (str,_) -> Format.pp_print_string f str
+    | Ast.Alg_pexpr (alg,_) ->
        Nbr.print f (alg_val alg)
   in Pp.list (fun f -> Format.pp_print_cut f ()) aux f e
 
@@ -104,17 +104,9 @@ let modification ?env f m =
      else
        Format.fprintf f "$APPLY %a %a" (alg_expr ?env) n
 		      (elementary_rule ?env) rule (* TODO Later *)
-  | Primitives.UPDATE (d_id,(va,_)) ->
-     begin
-       match d_id with
-       | Operator.ALG id ->
-	  Format.fprintf f "$UPDATE %a %a"
-			 (Environment.print_alg ?env) id
-       | Operator.RULE _ ->
-	  Format.fprintf f "$UPDATE '%a' %a" Operator.print_rev_dep d_id
-       | Operator.PERT _ ->
-	  Format.fprintf f "$UPDATE '%a' %a" Operator.print_rev_dep d_id
-     end (alg_expr ?env) va
+  | Primitives.UPDATE (id,(va,_)) ->
+     Format.fprintf f "$UPDATE %a %a"
+		    (Environment.print_alg ?env) id (alg_expr ?env) va
   | Primitives.SNAPSHOT fn ->
      Format.fprintf f "SNAPSHOT %a" (print_expr ?env) fn
   | Primitives.STOP fn ->
