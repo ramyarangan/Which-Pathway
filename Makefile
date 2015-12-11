@@ -1,8 +1,3 @@
-VN:=$(shell cat tag/number)#            #Git version number for commit tag
-VERSION:=$(shell cat tag/version)#      #Major revision release number
-RELEASE:=$(shell cat tag/release)#      #Release number
-DATE:=`date +'%Y-%m-%d %H:%M:%S'`#      #date YYYY-MM-DD 
-
 .DEFAULT_GOAL := all
 
 LABLTKLIBREP?=$(CAML_LD_LIBRARY_PATH)/../labltk
@@ -18,9 +13,9 @@ KASAREP = KaSa_rep/
 
 TERM = $(shell echo $$TERM)
 ifeq ($(TERM), dumb) # An approximation of "am I launched from emacs ?" :-)
- OCAMLBUILDFLAGS = -classic-display
+ OCAMLBUILDFLAGS = -classic-display $(EXTRAFLAGS)
 else
- OCAMLBUILDFLAGS =
+ OCAMLBUILDFLAGS = $(EXTRAFLAGS)
 endif
 
 USE_TK?=0
@@ -36,7 +31,7 @@ SCRIPTSWITNESS = $(SCRIPTSSOURCE:.sh=.witness)
 MODELS = $(wildcard $(MANKAPPAMODELSREP)*.ka)
 
 .PHONY: all clean temp-clean-for-ignorant-that-clean-must-be-done-before-fetch
-.PHONY: check build-tests doc clean_doc fetch_version on_linux_for_windows
+.PHONY: check build-tests doc clean_doc fetch_version on_linux_for_windows debug
 
 .PRECIOUS: $(SCRIPTSWITNESS)
 
@@ -90,6 +85,9 @@ bin/%: %.native Makefile
 doc: man/KaSim_manual.pdf
 doc_html: dev/KaSim.docdir/index.html man/KaSim_manual.htm
 
+debug:
+	@+$(MAKE) EXTRAFLAGS="-tag debug" KaSim.byte dev/db_printers.cma
+
 all: bin/KaSim bin/KaSa
 
 clean_doc:
@@ -108,6 +106,7 @@ clean: temp-clean-for-ignorant-that-clean-must-be-done-before-fetch clean_doc
 	+$(MAKE) KAPPABIN="$(CURDIR)/bin/" -C models/test_suite clean
 
 check: bin/sanity_test
+	@+$(MAKE) KAPPABIN="$(CURDIR)/bin/" -C models/test_suite clean
 	@+$(MAKE) KAPPABIN="$(CURDIR)/bin/" -C models/test_suite all
 
 build-tests: bin/sanity_test
@@ -123,39 +122,10 @@ on_linux_for_windows:
 	mv _build/main/KaSim.native KaSim.exe
 	mv _build/KaSa_rep/main/KaSa.native KaSa.exe
 
-full: 
+full:
 	$(MAKE) clean
 	$(MAKE) USE_TK=1 || echo 0
 
-light: 
+light:
 	$(MAKE) clean
 	$(MAKE) USE_TK=0 || echo 0
-
-commit: fetch_version 
-	echo -n `expr $(VN) + 1` > tag/number 
-	echo -n $(DATE) > tag/date 
-	make PREF="Not a release" send_caml
-
-major_version: fetch_version
-	echo -n `expr $(VERSION) + 1` > tag/version
-	echo -n `expr $(VN) + 1`> tag/number 
-	echo -n 1 > tag/release
-	echo -n $(DATE) > tag/date 
-	make PREF="Release " send_caml
-
-release: fetch_version
-	echo -n `expr $(RELEASE) + 1`> tag/release
-	echo -n `expr $(VN) + 1`> tag/number 
-	echo -n $(DATE) > tag/date 
-	make PREF="Release " send_caml
-
-fetch_version:
-	cd tag ; git checkout HEAD * 
-
-send_caml: 
-	echo -n xxx$(VN)$(RELEASE)$(VERSION)$(DATE)xxx
-	echo -n let git_commit_version,git_commit_release,git_commit_tag,git_commit_date  = $(VERSION),$(RELEASE),$(VN),\"$(DATE)\" > KaSa_rep/automatically_generated/git_commit_info.ml 
-	git commit -a 
-	git tag -a $(VN)  -m "$(PREF) v$(VERSION).$(RELEASE)...$(VN) $(DATE)"  
-	git push --tags
-	git push 

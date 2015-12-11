@@ -22,34 +22,41 @@ module S = Mods.IntSet
 module M = Mods.IntMap
 
 let ignore_flow_from_outgoing_siphon = true
+let check_mode = false
 					 
+type algo_type = Top_down | Bottom_up | Check 
+type order = Increasing_with_last_event | Decreasing_without_last_event
+			    
 type config = 
   { 
     do_tick: bool ;
-    enable_gc: bool ; 
+    keep_all_nodes: bool ; 
     cut_transitive_path: bool ; 
     stat_trans_closure_for_big_graphs: bool;
-    max_index:int
+    max_index:int;
+    algo: algo_type
   }
 
-let config_init = 
+let config_big_graph_with_progress_bar = 
   {
    do_tick = true;
-    enable_gc=true;
+    keep_all_nodes=false;
     cut_transitive_path=true ;
     stat_trans_closure_for_big_graphs=true;
     max_index=300;
+    algo= Bottom_up (*if check_mode then Check else Top_down*) ;
   }
 
-let config_intermediary = 
-  { config_init with do_tick = false}
+let config_big_graph_without_progress_bar = 
+  { config_big_graph_with_progress_bar with do_tick = false}
     
-let config_std = 
+let config_small_graph = 
   {
     do_tick = false;
-    enable_gc = false ;
+    keep_all_nodes = true ;
     cut_transitive_path = false ;
     stat_trans_closure_for_big_graphs=true;
+    algo= Bottom_up ;
     max_index = 300;
   }
 
@@ -126,8 +133,9 @@ let diff_list p a b =
 let compare_bool a b = compare a b < 0 
 let diff_list_decreasing =  diff_list (swap compare_bool)
 let merge_list_decreasing = merge_list (swap compare_bool)
-
-let closure err_fmt config prec is_obs init_to_eidmax weak_events init =
+(*let merge_list_increasing = merge_list compare_bool*)
+				       
+let closure_bottom_up err_fmt config prec is_obs init_to_eidmax =
   let max_index = M.fold (fun i _ -> max i) prec 0 in
   let is_init x =
     match M.find_option x prec with
@@ -152,9 +160,12 @@ let closure err_fmt config prec is_obs init_to_eidmax weak_events init =
       (fun x -> x),(false,0,0),(fun () -> ())
   in
   let s_pred_star = A.make (max_index+1) ([],0) in
-  let clean,max_succ(*,redirect,cut_event*) = 
-    if config.enable_gc 
+  let clean,max_succ = 
+    if config.keep_all_nodes 
     then 
+      (fun _ -> ()),
+      (fun _ -> (max_index+1))
+    else 
       begin 
         let max_succ = A.make (max_index+1) 0 in 
         let _ = A.iteri (fun i _ -> A.set max_succ i (init_to_eidmax i)) max_succ in 
@@ -181,16 +192,13 @@ let closure err_fmt config prec is_obs init_to_eidmax weak_events init =
         in 
         let _ = A.set is_last_succ_of 0 [] in 
         let gc_when_visit node =
-          if config.enable_gc then
+          if not config.keep_all_nodes then
             List.iter
               (fun k -> A.set s_pred_star k ([],0))
               (A.get is_last_succ_of node) in
         gc_when_visit,
         (fun i -> A.get max_succ i)
-      end 
-    else  
-      (fun _ -> ()),
-      (fun _ -> (max_index+1))
+      end    
   in 
   let _ = 
     M.fold 
@@ -222,8 +230,6 @@ let closure err_fmt config prec is_obs init_to_eidmax weak_events init =
           in
           let pred_star,max_out = 
             let l_pred = S.fold (fun i j -> i::j) s_pred [] in 
-            let l_pred = merge_list_decreasing l_pred (init succ) in
-            
             let s,max_out = A.get s_pred_star succ in 
             aux 
               l_pred 
@@ -240,8 +246,132 @@ let closure err_fmt config prec is_obs init_to_eidmax weak_events init =
       prec tick 
   in 
   let _ = close_tick () in 
-  s_pred_star 
+  let () = 
+    if not config.keep_all_nodes 
+    then 
+      A.iteri 
+	(fun i _ -> 
+	  if not (is_obs i) 
+	  then 
+	    A.set s_pred_star  i ([],0)) 
+	s_pred_star
+  in 
+  A.map fst s_pred_star,Decreasing_without_last_event 
 
+let closure_top_down err_fmt config prec is_obs  delta =
+  let is_obs = if config.keep_all_nodes then (fun _ -> true) else is_obs in 
+  let max_index = M.fold (fun i _ -> max i) prec 0 in
+  let prec =
+    M.fold (fun i s_pred l -> (i,s_pred)::l) prec []
+  in
+  let create_taints i =
+    let rec aux delta output =
+      if delta = 0 then output
+      else aux (delta - 1) (S.empty::output)
+    in
+    aux delta [S.singleton i]
+  in
+  let shift_taints l =
+    match l with t::t'::q -> (S.union t t')::q
+	       | _ -> l
+  in
+  let rec merge_taints l1 l2 =
+    match
+      l1,l2
+    with
+    | _,[] -> l1
+    | [],_ -> l2
+    | t::q,t'::q' ->
+       (S.union t t')::(merge_taints q q')
+  in 
+  let s_pred_star = A.make (max_index+1) [] in 
+  let taint i taints =
+    match
+      taints
+    with [] -> ()
+       | t::q ->
+	  S.iter
+	    (fun taint -> A.set s_pred_star taint (i::(A.get s_pred_star taint)))
+	    t
+  in 
+  let do_tick,tick,close_tick =
+    if max_index > 300 && config.do_tick
+    then
+      let tick = Mods.tick_stories err_fmt max_index (false,0,0) in
+      let f = Mods.tick_stories err_fmt max_index in
+      let close = Format.pp_print_newline err_fmt in 	  
+      f,tick,close
+    else
+      (fun x -> x),(false,0,0),(fun () -> ())
+  in
+  let tainting = A.make (max_index+1) [] in
+  let _ =
+    List.fold_left
+      (fun tick (i,s_pred) ->
+       let new_taint = 
+	 if is_obs i 
+	 then
+	   create_taints i
+	 else
+	   []
+       in
+       let taints = merge_taints new_taint (A.get tainting i) in 
+       let () = taint i taints in 
+       let shifted_taints = shift_taints taints in 
+       let taint x = A.set tainting x (merge_taints shifted_taints  (A.get tainting x)) in 
+       let () = S.iter taint s_pred in
+       let () = A.set tainting i [] in      
+       do_tick tick)
+      tick prec 
+  in
+  let () = close_tick () in
+  s_pred_star,Increasing_with_last_event
+
+let get_list_in_increasing_order_with_last_event i (m,mode) =
+  match
+    mode
+  with
+  | Increasing_with_last_event -> m.(i)
+  | Decreasing_without_last_event ->
+     begin
+       match
+	 m.(i)
+       with
+	 [] -> []
+       | l -> List.rev (i::l)
+     end
+       
+let closure_check err_fmt config prec is_obs init_to_eidmax =
+  let t = Sys.time () in 
+  let a,a' = closure_top_down err_fmt config prec is_obs 0 in
+  let t' = Sys.time () in
+  let b,b' = closure_bottom_up err_fmt {config with do_tick = false} prec is_obs init_to_eidmax in
+  let t'' = Sys.time () in
+  let _ = Printf.fprintf stderr "NEW: %f OLD: %f \n" (t'-.t) (t''-.t') in 
+  let _ =
+    A.iteri
+      (fun i s ->
+       let s = get_list_in_increasing_order_with_last_event i (a,a') in
+       let s' = get_list_in_increasing_order_with_last_event i (b,b') in 
+       if s = s' then ()
+       else
+	 let _ = Printf.fprintf stderr "DIFFER %i\n" i in
+	 let _ = List.iter (Printf.fprintf stderr "%i, ") s in
+	 let _ = Printf.fprintf stderr "\n" in 
+	   let _ = List.iter (Printf.fprintf stderr "%i, ") s' in 
+	   let _ = Printf.fprintf stderr "\n" in 
+	   ())
+      a
+  in a,a'
+       
+let closure err_fmt config prec is_obs init_to_eidmax =
+  match
+    config.algo
+  with
+  | Check -> closure_check err_fmt config prec is_obs init_to_eidmax 
+  | Bottom_up -> closure_bottom_up err_fmt config prec is_obs init_to_eidmax
+  | Top_down -> closure_top_down err_fmt config prec is_obs 0
+		   
 let neighbor_non_direct_descendant sons prec =
   let selection x = S.mem x sons in
   let rec aux (selected,todos) don =
@@ -267,3 +397,62 @@ let reduction prec =
      if S.is_empty to_remove then out
      else M.add eid (S.minus neigh to_remove) out
     ) prec prec
+
+let reduction_top_down prec =
+  let prec_star = fst (closure_top_down Format.std_formatter config_big_graph_without_progress_bar prec (fun _ -> true) 2) in
+  M.fold
+    (fun eid neigh out ->
+     let to_remove = A.get prec_star eid in
+     let s =
+       S.fold (fun i l -> i::l) neigh []
+     in
+     let s = List.rev s in
+     let rec aux l1 l2 output =
+       match l1,l2 with
+	 _,[] -> List.fold_left (fun set i -> S.add i set) output l1 (* This is quite annoying, why prec is not described with ordered list *)
+       | [],_ -> output
+       | h::q,h'::q' ->
+	  let cmp = compare h h' in
+	  if cmp < 0 then aux q l2 (S.add h output) 
+	  else if cmp = 0 then aux q q' output
+	  else  aux (h::q) q' output
+     in
+     let s = aux s to_remove S.empty in
+     M.add eid s out 
+    )
+    prec prec
+
+let reduction_check prec =
+  let t = Sys.time () in
+  let a = reduction prec in
+  let t' = Sys.time () in
+  let a' = reduction_top_down prec in
+  let t'' = Sys.time () in 
+  let differ i l l' =
+    let _ = Printf.fprintf stderr "DIFFER %i\n" i in
+    let _ = S.iter (Printf.fprintf stderr "%i, ") l in
+    let _ = Printf.fprintf stderr "\n" in 
+    let _ = S.iter (Printf.fprintf stderr "%i, ") l' in 
+    let _ = Printf.fprintf stderr "\n" in
+    ()
+  in
+(*  let _ = Printf.fprintf stderr "PREC:\n" in 
+  let _ =
+    M.iter (fun i s ->
+	    Printf.fprintf stderr "%i:\n" i;
+	    S.iter (Printf.fprintf stderr "  %i,") s;
+	    Printf.fprintf stderr "\n")
+	   prec
+  in *)
+  let _ =
+    M.monadic_fold2
+      () () 
+      (fun () () i l l' () -> (),if not (S.equal l l') then differ i l l')
+      (fun () () i l () -> (), if not (S.is_empty l) then differ i l S.empty)
+      (fun () () i l () -> (), if not (S.is_empty l) then differ i S.empty l)
+      a a' ()
+  in
+  let _ = Printf.fprintf stderr "OLD: %f ; NEW: %f \n" (t'-.t) (t''-.t') in
+  a
+
+    (*let reduction = reduction_check  *)

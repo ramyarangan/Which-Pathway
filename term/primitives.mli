@@ -19,6 +19,7 @@ end
 
 type elementary_rule = {
   rate : Alg_expr.t;
+  rate_absolute : bool;
   unary_rate : Alg_expr.t option;
   connected_components : Connected_component.t array;
   removed : Transformation.t list;
@@ -26,25 +27,24 @@ type elementary_rule = {
   consumed_tokens : (Alg_expr.t * int) list;
   injected_tokens : (Alg_expr.t * int) list;
   syntactic_rule : int;
-  (** negative number [n] means opposite of rule |[n]|,
-[0] means generated for perturbation. *)
+  (** [0] means generated for perturbation. *)
   instantiations : Instantiation.abstract Instantiation.event;
 }
 
 type modification =
     ITER_RULE of Alg_expr.t Location.annot * elementary_rule
-  | UPDATE of Operator.rev_dep * Alg_expr.t Location.annot
-  | SNAPSHOT of Alg_expr.t Ast.print_expr Location.annot list
-  | STOP of Alg_expr.t Ast.print_expr Location.annot list
+  | UPDATE of int * Alg_expr.t Location.annot
+  | SNAPSHOT of Alg_expr.t Ast.print_expr list
+  | STOP of Alg_expr.t Ast.print_expr list
   | CFLOW of string option * Connected_component.t array *
 	       Instantiation.abstract Instantiation.test list
-  | FLUX of Alg_expr.t Ast.print_expr Location.annot list
-  | FLUXOFF of Alg_expr.t Ast.print_expr Location.annot list
+  | FLUX of Alg_expr.t Ast.print_expr list
+  | FLUXOFF of Alg_expr.t Ast.print_expr list
   | CFLOWOFF of Connected_component.t array
   | PLOTENTRY
   | PRINT of
-      (Alg_expr.t Ast.print_expr Location.annot list *
-	 Alg_expr.t Ast.print_expr Location.annot list)
+      (Alg_expr.t Ast.print_expr list *
+	 Alg_expr.t Ast.print_expr list)
 
 type perturbation =
     { precondition: Alg_expr.t Ast.bool_expr;

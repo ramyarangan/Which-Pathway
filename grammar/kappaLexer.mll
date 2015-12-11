@@ -22,6 +22,8 @@
  let () = Hashtbl.add keywords "INF" INFINITY in
  fun x ->
  try Hashtbl.find keywords x with Not_found -> ID x
+
+let space_chars = [' ';'\n';'\t']
 }
 
 let eol = '\r'? '\n'
@@ -43,19 +45,18 @@ rule token = parse
 	 | "<->" {KAPPA_LRAR}
 	 | "->" {KAPPA_RAR}
 	 | "<-" {LAR}
-	 | ":=" {let pos = position lexbuf in ASSIGN pos}
+	 | ":=" {ASSIGN}
 	 | "<>" {DIFF}
-	 | pert as s {let pos = position lexbuf in
-		      match s with
+	 | pert as s {match s with
 		      | "$DEL" -> DELETE
 		      | "$ADD" -> INTRO
-		      | "$SNAPSHOT" -> (SNAPSHOT pos)
-		      | "$STOP" -> (STOP pos)
-		      | "$FLUX" -> (FLUX pos)
+		      | "$SNAPSHOT" -> SNAPSHOT
+		      | "$STOP" -> STOP
+		      | "$FLUX" -> FLUX
 		      | "$TRACK" -> TRACK
-		      | "$UPDATE" -> (ASSIGN2 pos)
-		      | "$PRINT" -> (PRINT pos)
-		      | "$PRINTF" -> (PRINTF pos)
+		      | "$UPDATE" -> ASSIGN2
+		      | "$PRINT" -> PRINT
+		      | "$PRINTF" -> PRINTF
 		      | "$PLOTENTRY" -> PLOTENTRY
 		      | s ->
 			 raise
@@ -64,7 +65,7 @@ rule token = parse
 			       Location.of_pos (Lexing.lexeme_start_p lexbuf)
 				(Lexing.lexeme_end_p lexbuf)))
 		     }
-	 | '[' {let lab = read_label [] [']'] lexbuf in
+	 | '[' (id as lab) ']' {
 		match lab with
 		| "E" -> EVENT
 		| "E-" -> NULL_EVENT
@@ -95,7 +96,7 @@ rule token = parse
 	 | ':' {TYPE}
 	 | ';' {SEMICOLON}
 	 | '\"' {let str = read_label [] ['\"'] lexbuf in
-		 let pos = position lexbuf in STRING (str,pos)}
+		 STRING str}
 	 | eol {Lexing.new_line lexbuf ; NEWLINE}
 	 | '#' {comment lexbuf}
 	 | '/' '*' {inline_comment lexbuf; token lexbuf}
@@ -109,7 +110,7 @@ rule token = parse
 	 | ')' {CL_PAR}
 	 | '{' {OP_CUR}
 	 | '}' {CL_CUR}
-	 | '|' {let pos = position lexbuf in PIPE pos}
+	 | '|' {PIPE}
 	 | '.' {DOT}
 	 | '+' {PLUS}
 	 | '*' {MULT}
@@ -119,30 +120,29 @@ rule token = parse
 	 | '<' {SMALLER}
 	 | '>' {GREATER}
 	 | '=' {EQUAL}
-	 | '%' {let lab = read_label [] [':'] lexbuf in
-		let pos = position lexbuf in
+	 | '%' (id as lab) ':' {
 		match lab with
-		| "agent" -> (SIGNATURE pos)
-		| "init" -> (INIT pos)
-		| "var" -> (LET pos)
-		| "plot" -> (PLOT pos)
-		| "mod" -> (PERT pos)
-		| "obs" -> (OBS pos)
-		| "def" -> (CONFIG pos)
-		| "token" -> (TOKEN pos)
+		| "agent" -> SIGNATURE
+		| "init" -> INIT
+		| "var" -> LET
+		| "plot" -> PLOT
+		| "mod" -> PERT
+		| "obs" -> OBS
+		| "def" -> CONFIG
+		| "token" -> TOKEN
 		| _ as s ->
 		   raise (Syntax_Error ("Instruction \""^s^"\" not recognized",
 					Location.of_pos
 					(Lexing.lexeme_start_p lexbuf)
 					 (Lexing.lexeme_end_p lexbuf)))
 	       }
-	 | '!' {let pos = position lexbuf in KAPPA_LNK pos}
+	 | '!' {KAPPA_LNK}
 	 | internal_state as s {let i = String.index s '~' in
 				let r = String.sub s (i+1) (String.length s-i-1) in
 				KAPPA_MRK r
 			       }
-	 | '?' {let pos = position lexbuf in (KAPPA_WLD pos)}
-	 | '_' {let pos = position lexbuf in (KAPPA_SEMI pos)}
+	 | '?' {KAPPA_WLD}
+	 | '_' {KAPPA_SEMI}
 	 | blank  {token lexbuf}
 	 | eof {reach_eof lexbuf; EOF}
 	 | _ as c {
