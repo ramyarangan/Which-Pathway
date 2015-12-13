@@ -22,6 +22,30 @@ let map_rem_head_from_list map key =
 				IntMap.add key (List.tl val_list) map
 	else map
 
+let mark_steps_with_id steps = 
+	let add_id id_list step = 
+		if ((List.length id_list) = 0) then [(0, step)]
+		else
+			let (cur_int, _) = List.hd id_list in
+			([(cur_int + 1, step)] @ id_list) 
+	in
+	List.fold_left add_id [] steps
+
+let map_rem_from_list_by_id map key n = 
+	if IntMap.mem key map then
+		let val_list = IntMap.find key map in 
+			if (List.length val_list) < n then map
+			else if (List.length val_list) = 1 then
+				IntMap.remove key map
+			else (
+				let id_val_list = mark_steps_with_id val_list in
+				let id_val_list = 
+					List.filter (fun (id, _) -> (id <> n)) id_val_list in
+				let val_list = 
+					List.fold (fun cur (_, val) -> cur @ [val]) [] id_val_list in
+				IntMap.add key val_list map
+			)
+	else map
 (****************************************************************************
 * Story data structures 
 *)
@@ -126,15 +150,6 @@ let create_toy_story env steps =
 (******************************************************************************
 * Matching helpers 
 *)
-let mark_steps_with_id steps = 
-	let add_id id_list step = 
-		if ((List.length id_list) = 0) then [(0, step)]
-		else
-			let (cur_int, _) = List.hd id_list in
-			([(cur_int + 1, step)] @ id_list) 
-	in
-	List.fold_left add_id [] steps
-
 let add_story_events_to_map map story_events = 
 	let add_story_event_to_map map story_event = 
 		let (_, (rule, _)) = story_event in
@@ -157,25 +172,101 @@ let add_story_events_to_map map story_events =
 * agent ids in the story to what that instance is currently mapped to
 * Check that agent name to agent id map has valid mapping and compute necessary
 * extension
-* Do this as a BFS of search space
-* Maintain list of states - (wq, result_map, mapping, is_done)
-* List.fold through the trace backwards. Assemble (list of states, is_done)
-* Call something that takes in list of states and is_done, goes through each state
-* Recursive function to run through the states - you're assembling new states and an outer is_done var
 *)
-let find_abstract mapping trace_inst (new_mapping, cur_int, found) cur_abstract = 
-	if found then (new_mapping, cur_int, found)
-	else
 
-(* Needs revision. Needs to return list of (match_loc, match_event, mappings_to_add)
+let get_test_mapping mapping test =
+	match test with 
+  | Instantiation.Is_Here (agent_id, agent_name) ->
+  	IntMap.add agent_name agent_id mapping
+  | Instantiation.Has_Internal (((agent_id, agent_name), _), _) ->
+  	IntMap.add agent_name agent_id mapping
+  | Instantiation.Is_Free ((agent_id, agent_name), _) ->
+  	IntMap.add agent_name agent_id mapping
+  | Instantiation.Is_Bound ((agent_id, agent_name), _) ->
+  	IntMap.add agent_name agent_id mapping
+  | Instantiation.Has_Binding_type (((agent_id, agent_name), _), _) ->
+  	IntMap.add agent_name agent_id mapping
+  | Instantiation.Is_Bound_to (((id_1, name_1), _), ((id_2, name_2), _)) -> (
+  	let mapping = IntMap.add name_1 id_1 mapping in
+  	IntMap.add name_2 id_2 mapping
+  )
+
+let get_action_mapping mapping action = 
+	match action with
+  | Instantiation.Create ((agent_id, agent_name), _) ->
+   	IntMap.add agent_name agent_id mapping
+  | Instantiation.Mod_internal (((agent_id, agent_name), _) _) ->
+  	IntMap.add agent_name agent_id mapping
+  | Instantiation.Bind (((id_1, name_1), _), ((id_2, name_2), _)) -> (
+  	let mapping = IntMap.add name_1 id_1 mapping in
+  	IntMap.add name_2 id_2 mapping
+  )
+  | Instantiation.Bind_to (((id_1, name_1), _), ((id_2, name_2), _)) -> (
+  	let mapping = IntMap.add name_1 id_1 mapping in
+  	IntMap.add name_2 id_2 mapping
+  )
+  | Instantiation.Free (((agent_id, agent_name), _) _) ->
+  	IntMap.add agent_name agent_id mapping
+  | Instantiation.Remove (agent_id, agent_name) ->
+  	IntMap.add agent_name agent_id mapping
+
+let get_agent_name_id_map (tests, (actions, _, _)) =
+	let agent_name_id_map = 
+		List.fold_left get_test_mapping IntMap.empty tests in
+	List.fold_left get_action_mapping agent_name_id_map actions 
+
+let find_mapping_extension mapping s_mapping t_mapping = 
+	let rec extension_mapping_helper mapping s_mapping t_mapping cur_extension = 
+		if IntMap.empty s_mapping then cur_extension
+		else match cur_extension with
+		| Some cur -> (
+			let (m_agent_name, m_agent_id) = IntMap.choose s_mapping in
+			let s_mapping = IntMap.remove (m_agent_name, m_agent_id) s_mapping in
+			let t_id_real = IntMap.find m_agent_name t_mapping in 
+			if IntPairMap.mem (m_agent_name, m_agent_id) cur then (
+				(* This agent has already been mapped to trace event *)
+				let t_id = IntPairMap.find (m_agent_name, m_agent_id) cur in
+				if (t_id <> t_id_real) then 
+					extension_mapping_helper mapping s_mapping t_mapping None 
+				else 
+					extension_mapping_helper mapping s_mapping t_mapping cur_extension
+			)
+			else ( 
+				(* This agent has not been mapped to trace event yet *)
+				let cur_extension = 
+					IntPairMap.add (m_agent_name, m_agent_id) t_id_real cur_extension
+				in 
+				extension_mapping_helper mapping s_mapping t_mapping cur_extension
+			)
+		)
+		| None -> None
+	in
+	extension_mapping_helper mapping s_mapping t_mapping (Some IntPairMap.empty)
+
+(* Returns a list of (match_loc, match_event, mappings_to_add) plus an updated count
+* append to the current list of the matchings *)
+let find_abstract mapping trace_inst (matches_so_far, count) cur_abstract = 
+	let count = count + 1 in
+	let (_, (_, story_inst)) = cur_abstract in
+	let t_agent_name_to_id = get_agent_name_id_map trace_inst in
+	let s_agent_name_to_id = get_agent_name_id_map story_inst in
+	let option_mapping_to_add =
+	 	find_mapping_extension mapping s_agent_name_to_id t_agent_name_to_id in
+	match option_mapping_to_add with
+	| Some mapping_to_add -> 
+		(matches_so_far @ [(count, cur_abstract, mapping_to_add)], count)
+	| None -> (matches_so_far, count)
+
+
+(* Returns list of (match_loc, match_event, mappings_to_add)
  * mapping is a IntPairMap
- * Mappings to add is a list of (agent_name, story_id, trace_id).
+ * Mappings_to_add is a list of (agent_name, story_id, trace_id).
  *)
 let find_rule_application_mapping mapping trace_inst potential_abstract =
-	let (match_loc, new_mappings, found) = 
-		List.fold (find_abstract mapping trace_inst) (IntMap.empty, 0, false) potential_abstract
+	let matchings = 
+		List.fold_left (find_abstract mapping trace_inst) ([], 0) potential_abstract
 	in 
-	if (found) then Some (match_loc, new_mappings)
+	if ((List.length matchings) <> 0) then Some matchings
 	else None
 
 let update_states_list s (state_list, done) match_info = 
@@ -193,8 +284,8 @@ let update_states_list s (state_list, done) match_info =
 		let add_new_mappings cur_mapping (agent_name, story_id, trace_id) =
 			IntMap.add (agent_name, story_id) trace_id cur_mapping
 		in 
-		let new_mappings = 
-			List.fold add_new_mappings mapping mappings_to_add
+		let new_mapping = 
+			List.fold_left add_new_mappings mapping mappings_to_add
 		in
 		(* Add new elements from story to wq *)
 		let might_add = (match IntMap.mem story_event_id backward_edges with
@@ -209,7 +300,7 @@ let update_states_list s (state_list, done) match_info =
 			List.fold_left succ_handled true (IntMap.find story_event_id forward_edges)
 		) in
 		let to_add = List.filter all_succ_handled might_add in
-		let wq = add_story_events_to_map wq to_add in
+		let new_wq = add_story_events_to_map wq to_add in
 		state_list @ [(new_wq, new_result_map, new_mapping, IntMap.is_empty new_wq)]
 	)
 
@@ -228,7 +319,7 @@ let step_state_strong_algorithm s mark_step (states_list, all_is_done) (state) =
 					find_rule_application mapping trace_inst potential_abstract in
 				match match_option with
 				| Some match_infos -> (
-					List.fold (update_states_list s) ([state], false) match_infos
+					List.fold_left (update_states_list s) ([state], false) match_infos
 				)
 				| None -> (states_list @ [state], all_is_done)  (* No matching instantiation *)
 			)
@@ -239,7 +330,7 @@ let step_state_strong_algorithm s mark_step (states_list, all_is_done) (state) =
 let step_states_strong_algorithm s (states_list, all_is_done) mark_step = 
 	if all_is_done then (states_list, all_is_done)
 	else 
-		List.fold (step_state_strong_algorithm s mark_step) ([], false) states_list
+		List.fold_left (step_state_strong_algorithm s mark_step) ([], false) states_list
 
 let check_strong_story_embeds env steps = 
 	let s_option = (create_toy_story env steps) in
