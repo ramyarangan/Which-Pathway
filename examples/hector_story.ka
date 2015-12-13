@@ -9,7 +9,7 @@
 'y--' A(x~u,y~p,z~p) -> A(x~u,y~u,z~p) @10
 
 
-%obs: 'GOAL' A(x~p,y~u,z~p)
+%obs: 'GOAL' |A(x~p,y~u,z~p)|
 
 %init: 1 A(x~u,y~u,z~u)
 
