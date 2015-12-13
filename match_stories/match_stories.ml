@@ -53,34 +53,77 @@ let find_id_for_rule env name =
 		printf "%s %s" "failed to find rule: " name;
 		None
 	)
-	else (Some (List.hd rule_id_list))
+	else (Some ((List.hd rule_id_list) + 1))
 
 let find_all_applications env steps = 
 	let map = IntMap.empty in 
 	let find_application env map step = 
 		match step with
-		| KI.Event ((Causal.RULE (rule)), inst) ->
+		| KI.Event ((Causal.RULE (rule)), inst) -> (	
 				map_add_val_to_list map rule inst
+		)
 		| _ -> map
 	in
 	List.fold_left (find_application env) map steps 
 
+let check_test_action_matches env first_event second_event = 
+	match (first_event, second_event) with
+	| (_, (_, (_, (actions, _,_)))), (_, (_, (tests, _))) -> (
+		let add_agents_to_list agent_list action = (
+(*			printf "Action: ";
+			Instantiation.print_concrete_action 
+				~sigs:(Environment.signatures env) Format.std_formatter action;
+			printf "\n"; *)
+			match action with
+			| Instantiation.Bind (((id_1, name_1), _), ((id_2, name_2), _)) -> (
+				(agent_list @ [(id_1, name_1)]) @ [(id_2, name_2)]
+			)
+	  	| Instantiation.Bind_to (((id_1, name_1), _), ((id_2, name_2), _)) -> (
+				(agent_list @ [(id_1, name_1)]) @ [(id_2, name_2)]
+			)
+	  	| _ -> agent_list
+	  ) in
+	  let filter_agents_by_match agent_list test = (
+(*	  	printf "Test: ";
+			Instantiation.print_concrete_test 
+				~sigs:(Environment.signatures env) Format.std_formatter test;
+			printf "\n"; *)
+	  	match test with 
+			| Instantiation.Is_Bound_to (((id_1, name_1), _), ((id_2, name_2), _)) -> (
+				(List.mem (id_1, name_1) agent_list) && 
+					(List.mem (id_2, name_2) agent_list)
+			)
+			| _ -> false
+	  ) in
+	  let agent_list = List.fold_left add_agents_to_list [] actions in
+	  let filtered_tests = List.filter (filter_agents_by_match agent_list) tests in
+	  (List.length filtered_tests) <> 0
+	)
+
+(* Creates a toy story for simple.ka *)
 let create_toy_story env steps = 
 	let get_rand_element l = List.nth l (Random.int (List.length l)) in
 	let map = find_all_applications env steps in
-	let x_id_option = (find_id_for_rule env "x") in
-	let y_id_option = (find_id_for_rule env "y") in
+	let x_id_option = (find_id_for_rule env "A.B") in
+	let y_id_option = (find_id_for_rule env "AB.C") in
 	match (x_id_option, y_id_option) with 
 	| (Some x_id, Some y_id) -> (
 		match ((IntMap.mem x_id map), (IntMap.mem y_id map)) with
 		| (true, true) -> (
-			let x_event : StoryEvent.t = 
-			(0, (x_id, get_rand_element (IntMap.find x_id map))) in 
-			let y_event : StoryEvent.t = 
-				(1, (y_id, get_rand_element (IntMap.find y_id map))) in
+			let rec get_events () = (
+				let x_event : StoryEvent.t = 
+				(0, (x_id, get_rand_element (IntMap.find x_id map))) in 
+				let y_event : StoryEvent.t = 
+					(1, (y_id, get_rand_element (IntMap.find y_id map))) in
+				if check_test_action_matches env x_event y_event then
+					(x_event, y_event)
+				else get_events ()
+			) in
+			let (x_event, y_event) = get_events () in 
 			let forward_list : adjacency_list_t = IntMap.singleton 0 [y_event] in
 			let reverse_list : adjacency_list_t = IntMap.singleton 1 [x_event] in
 			let start_events = [x_event] in
+			printf "Created test story A.B -> AB.C \n ";
 			Some ((forward_list, reverse_list), start_events)
 		)
 		| _ -> None
@@ -126,12 +169,15 @@ let step_weak_algorithm (s : story_t) (wq, result_map, is_done) mark_step =
 					(* Remove matched story instance from wq *)
 					let wq = map_rem_head_from_list wq rule in
 					(* Add new elements from story to wq *)
-					let might_add = IntMap.find story_event_id forward_edges in
+					let might_add = (match IntMap.mem story_event_id forward_edges with
+					| true -> IntMap.find story_event_id forward_edges 
+					| false -> []) in
 					(* Only add if all predecessors have been handled *)
 					let all_pred_handled ((story_event_id, _) : StoryEvent.t) = (
 						let pred_handled prev_handled (pred_id, _) = 
 							(prev_handled && (IntMap.mem pred_id result_map))
 						in
+						(* all events encountered in alg have backward edges *)
 						List.fold_left pred_handled true (IntMap.find story_event_id backward_edges)
 					) in
 					let to_add = List.filter all_pred_handled might_add in
@@ -146,7 +192,7 @@ let step_weak_algorithm (s : story_t) (wq, result_map, is_done) mark_step =
 			(wq, result_map, is_done)
 
 (* Does OCaml have a HashMap implementation? Otherwise, consider using HashTbl
- * when possible, because these are log n lookups. *)
+ * when possible, because these are log n lookup. *)
 let check_weak_story_embeds env steps = 
 	let s_option = (create_toy_story env steps) in
 	match s_option with

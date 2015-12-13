@@ -17,5 +17,6 @@
 
 
 %mod: [T]>0 do $TRACK 'GOAL' [true]
+%mod: 'GOAL' > 0 do ( $TRACK 'GOAL' [false]; $STOP )
 %def: "displayCompression" "none" "weak" "strong"
 
