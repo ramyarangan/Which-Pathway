@@ -2,6 +2,7 @@ open Printf
 
 module KI = Utilities.S.PH.B.PB.CI.Po.K
 module IntMap = Map.Make(struct type t = int let compare = compare end)
+module IntPairMap = Map.Make(struct type t = (int * int) let compare = compare end)
 
 (****************************************************************************
 * General map helpers 
@@ -70,10 +71,6 @@ let check_test_action_matches env first_event second_event =
 	match (first_event, second_event) with
 	| (_, (_, (_, (actions, _,_)))), (_, (_, (tests, _))) -> (
 		let add_agents_to_list agent_list action = (
-(*			printf "Action: ";
-			Instantiation.print_concrete_action 
-				~sigs:(Environment.signatures env) Format.std_formatter action;
-			printf "\n"; *)
 			match action with
 			| Instantiation.Bind (((id_1, name_1), _), ((id_2, name_2), _)) -> (
 				(agent_list @ [(id_1, name_1)]) @ [(id_2, name_2)]
@@ -84,10 +81,6 @@ let check_test_action_matches env first_event second_event =
 	  	| _ -> agent_list
 	  ) in
 	  let filter_agents_by_match agent_list test = (
-(*	  	printf "Test: ";
-			Instantiation.print_concrete_test 
-				~sigs:(Environment.signatures env) Format.std_formatter test;
-			printf "\n"; *)
 	  	match test with 
 			| Instantiation.Is_Bound_to (((id_1, name_1), _), ((id_2, name_2), _)) -> (
 				(List.mem (id_1, name_1) agent_list) && 
@@ -131,7 +124,7 @@ let create_toy_story env steps =
 	| _ -> None
 
 (******************************************************************************
-* Weak compression matching helpers and algorithm 
+* Matching helpers 
 *)
 let mark_steps_with_id steps = 
 	let add_id id_list step = 
@@ -149,6 +142,127 @@ let add_story_events_to_map map story_events =
 	in 
 	List.fold_left add_story_event_to_map map story_events
 
+(******************************************************************************
+* Strong compression algorithm
+* In reality, the assignment of agents to their concretizations will need to 
+* be better:
+* 1. More than just checking whether a mapping btwn agents exists, you need to
+* check that the appropriate tests are applied to the appropriate agents
+* 2. Need to account for this case: multiple agents of type A in a rule, such 
+* that a single story event could yield multiple potential new matches in an
+* exponential way. _All possible_ valid mappings. 
+* 
+* Get agent name to agent id map from tests and actions of an event
+* Maintain an extra map for unification - Map rule name to a map of a 
+* agent ids in the story to what that instance is currently mapped to
+* Check that agent name to agent id map has valid mapping and compute necessary
+* extension
+* Do this as a BFS of search space
+* Maintain list of states - (wq, result_map, mapping, is_done)
+* List.fold through the trace backwards. Assemble (list of states, is_done)
+* Call something that takes in list of states and is_done, goes through each state
+* Recursive function to run through the states - you're assembling new states and an outer is_done var
+*)
+let find_abstract mapping trace_inst (new_mapping, cur_int, found) cur_abstract = 
+	if found then (new_mapping, cur_int, found)
+	else
+
+(* Needs revision. Needs to return list of (match_loc, match_event, mappings_to_add)
+ * mapping is a IntPairMap
+ * Mappings to add is a list of (agent_name, story_id, trace_id).
+ *)
+let find_rule_application_mapping mapping trace_inst potential_abstract =
+	let (match_loc, new_mappings, found) = 
+		List.fold (find_abstract mapping trace_inst) (IntMap.empty, 0, false) potential_abstract
+	in 
+	if (found) then Some (match_loc, new_mappings)
+	else None
+
+let update_states_list s (state_list, done) match_info = 
+	if (done) then (state_list, done) 
+	else (
+		let ((forward_edges, backward_edges), _) = s in
+		let (match_loc, match_event, mappings_to_add) = match_info in
+		let (wq, result_map, mapping, is_done) = List.hd state_list in
+		let (story_event_id, (rule_id, story_inst)) = match_event in
+		(* Update result set with new mapping *)
+		let new_result_map = IntMap.add story_event_id step_id result_map in
+		(* Remove matched story instance from wq *)
+		let new_wq = map_rem_from_list_by_id wq rule match_loc in
+		(* Add new mappings *)
+		let add_new_mappings cur_mapping (agent_name, story_id, trace_id) =
+			IntMap.add (agent_name, story_id) trace_id cur_mapping
+		in 
+		let new_mappings = 
+			List.fold add_new_mappings mapping mappings_to_add
+		in
+		(* Add new elements from story to wq *)
+		let might_add = (match IntMap.mem story_event_id backward_edges with
+		| true -> IntMap.find story_event_id backward_edges 
+		| false -> []) in
+		(* Only add if all predecessors have been handled *)
+		let all_succ_handled ((story_event_id, _) : StoryEvent.t) = (
+			let succ_handled next_handled (succ_id, _) = 
+				(next_handled && (IntMap.mem succ_id result_map))
+			in
+			(* all events encountered in alg have backward edges *)
+			List.fold_left succ_handled true (IntMap.find story_event_id forward_edges)
+		) in
+		let to_add = List.filter all_succ_handled might_add in
+		let wq = add_story_events_to_map wq to_add in
+		state_list @ [(new_wq, new_result_map, new_mapping, IntMap.is_empty new_wq)]
+	)
+
+let step_state_strong_algorithm s mark_step (states_list, all_is_done) (state) = 
+	if all_is_done then (states_list, all_is_done)
+	else 
+		let (step_id, step) = mark_step in
+		match step with
+		| KI.Event (Causal.RULE (rule), trace_inst) -> (
+			let (wq, _, mapping, _) = state in
+			if IntMap.mem rule wq then (
+				(* See if any rule application is applicable given current mapping. Returns
+				* location of match in the list, updated mapping *)
+				let potential_abstract = IntMap.find rule wq in
+				let match_option = 
+					find_rule_application mapping trace_inst potential_abstract in
+				match match_option with
+				| Some match_infos -> (
+					List.fold (update_states_list s) ([state], false) match_infos
+				)
+				| None -> (states_list @ [state], all_is_done)  (* No matching instantiation *)
+			)
+			else (states_list @ [state], all_is_done)  (* No matching rule *)
+		)
+		| _ -> (states_list @ [state], all_is_done)
+
+let step_states_strong_algorithm s (states_list, all_is_done) mark_step = 
+	if all_is_done then (states_list, all_is_done)
+	else 
+		List.fold (step_state_strong_algorithm s mark_step) ([], false) states_list
+
+let check_strong_story_embeds env steps = 
+	let s_option = (create_toy_story env steps) in
+	match s_option with
+	| Some s -> (
+		let ((_, _), last_events) = s in
+		let wq = IntMap.empty in (* wq is map from rule id to story_events *)
+		let result_map = IntMap.empty in (* result_map maps story_event ids to trace id *)
+		let mapping = IntPairMap.empty in
+		let wq = add_story_events_to_map wq last_events in (* Initialize wq *)
+		let param = [(wq, result_map, mapping, false)] in
+		let (_,is_done) = 
+			List.fold_left (step_states_strong_algorithm s) 
+				(param, false) (mark_steps_with_id (List.rev steps))
+		in
+		if is_done then (printf "%s " "matches")
+		else (printf "%s " "doesn't match") 
+	)
+	| None -> (printf "%s" "could not load test story")  
+
+(******************************************************************************
+* Weak compression algorithm 
+*)
 let step_weak_algorithm (s : story_t) (wq, result_map, is_done) mark_step = 
 	if is_done then (wq, result_map, is_done)
 	else 
@@ -188,8 +302,7 @@ let step_weak_algorithm (s : story_t) (wq, result_map, is_done) mark_step =
 			)
 			else (wq, result_map, is_done)  (* No matching rule *)
 			)
-		| KI.Event _ | KI.Dummy _ | KI.Obs _ | KI.Init _ | KI.Subs _ -> 
-			(wq, result_map, is_done)
+		| _ -> (wq, result_map, is_done)
 
 (* Does OCaml have a HashMap implementation? Otherwise, consider using HashTbl
  * when possible, because these are log n lookup. *)
