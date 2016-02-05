@@ -325,7 +325,7 @@ let finalize form env counter graph state =
 	      file) in
        Outputs.output_flux env e) state.flux in
   let () = ExceptionDefn.flush_warning form in  
-  let () = Rule_interpreter.check_story_embeds env graph in
+  (* let () = Rule_interpreter.check_story_embeds env graph in *)
   Rule_interpreter.generate_stories form env graph
 
 let go form counter f =
