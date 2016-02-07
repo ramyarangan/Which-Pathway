@@ -320,9 +320,8 @@ let check_weak_story_embeds env steps =
  * If no matches, return None. 
  * For each possible assignment, apply the mapping and recurse. 
  *)
-type 'a test_action_list = Tests of 'a test list
-												| Actions of 'a action list
-type 'a test_action = Test of 'a test | Action of 'a action
+type 'a test_action_t = Test of Instantiation.concrete Instantiation.test 
+											| Action of Instantiation.concrete Instantiation.action
 
 let add_to_agent_name_id_map agent_name agent_id test_action map =
 	if IntMap.mem agent_name map then (
@@ -340,70 +339,67 @@ let add_to_agent_name_id_map agent_name agent_id test_action map =
 		let single_map = IntMap.singleton agent_id [test_action] in
 		IntMap.add agent_name single_map map
 
-let make_agent_id_to_test inst_list = 
-	let add_to_map agent_name_map test = 
-		match test with 
-	  | Instantiation.Is_Here (agent_id, agent_name) ->
-	  	add_to_agent_name_id_map agent_name agent_id test agent_name_map
-	  | Instantiation.Has_Internal (((agent_id, agent_name), _), _) ->
-	  	add_to_agent_name_id_map agent_name agent_id test agent_name_map	  	
-	  | Instantiation.Is_Free ((agent_id, agent_name), _) ->
-	  	add_to_agent_name_id_map agent_name agent_id test agent_name_map
-	  | Instantiation.Is_Bound ((agent_id, agent_name), _) ->
-	  	add_to_agent_name_id_map agent_name agent_id test agent_name_map
-	  | Instantiation.Has_Binding_type (((agent_id, agent_name), _), _) ->
-	  	add_to_agent_name_id_map agent_name agent_id test agent_name_map
-	  | Instantiation.Is_Bound_to (((id_1, name_1), _), ((id_2, name_2), _)) -> (
-	  	let mapping = 
-	  		add_to_agent_name_id_map name_1 id_1 test agent_name_map
- 			in
-	  	add_to_agent_name_id_map name_1 id_1 test mapping
-	  )
-  in
-	List.fold_left add_to_map IntMap.empty inst_list
+let add_agent_id_to_test agent_name_map test = 
+	match test with 
+  | Instantiation.Is_Here (agent_id, agent_name) ->
+  	add_to_agent_name_id_map agent_name agent_id (Test test) agent_name_map
+  | Instantiation.Has_Internal (((agent_id, agent_name), _), _) ->
+  	add_to_agent_name_id_map agent_name agent_id (Test test) agent_name_map	  	
+  | Instantiation.Is_Free ((agent_id, agent_name), _) ->
+  	add_to_agent_name_id_map agent_name agent_id (Test test) agent_name_map
+  | Instantiation.Is_Bound ((agent_id, agent_name), _) ->
+  	add_to_agent_name_id_map agent_name agent_id (Test test) agent_name_map
+  | Instantiation.Has_Binding_type (((agent_id, agent_name), _), _) ->
+  	add_to_agent_name_id_map agent_name agent_id (Test test) agent_name_map
+  | Instantiation.Is_Bound_to (((id_1, name_1), _), ((id_2, name_2), _)) -> (
+  	let mapping = 
+  		add_to_agent_name_id_map name_1 id_1 (Test test) agent_name_map
+			in
+  	add_to_agent_name_id_map name_1 id_1 (Test test) mapping
+  )
 
-let make_agent_id_to_action inst_list = 
-	let add_to_map agent_name_map action = 
-		match action with 
-		| Instantiation.Create ((agent_id, agent_name), _) ->
-	  	add_to_agent_name_id_map agent_name agent_id action agent_name_map
-  	| Instantiation.Mod_internal (((agent_id, agent_name), _), _) ->
-	  	add_to_agent_name_id_map agent_name agent_id action agent_name_map
-  	| Instantiation.Bind (((id_1, name_1), _), ((id_2, name_2), _)) -> (
-	  	let mapping = 
-	  		add_to_agent_name_id_map name_1 id_1 action agent_name_map
- 			in
-	  	add_to_agent_name_id_map name_1 id_1 action mapping
-	  )
-  	| Instantiation.Bind_to (((id_1, name_1), _), ((id_2, name_2), _)) -> (
-	  	let mapping = 
-	  		add_to_agent_name_id_map name_1 id_1 action agent_name_map
- 			in
-	  	add_to_agent_name_id_map name_1 id_1 action mapping
-	  )
-  	| Instantiation.Free ((agent_id, agent_name), _) ->
-	  	add_to_agent_name_id_map agent_name agent_id action agent_name_map
-  	| Instantiation.Remove (agent_id, agent_name) ->
-	  	add_to_agent_name_id_map agent_name agent_id action agent_name_map
-	in 
-	List.fold_left add_to_map IntMap.empty inst_list
+let add_agent_id_to_action agent_name_map action = 
+	match action with 
+	| Instantiation.Create ((agent_id, agent_name), _) ->
+  	add_to_agent_name_id_map agent_name agent_id (Action action) agent_name_map
+	| Instantiation.Mod_internal (((agent_id, agent_name), _), _) ->
+  	add_to_agent_name_id_map agent_name agent_id (Action action) agent_name_map
+	| Instantiation.Bind (((id_1, name_1), _), ((id_2, name_2), _)) -> (
+  	let mapping = 
+  		add_to_agent_name_id_map name_1 id_1 (Action action) agent_name_map
+			in
+  	add_to_agent_name_id_map name_1 id_1 (Action action) mapping
+  )
+	| Instantiation.Bind_to (((id_1, name_1), _), ((id_2, name_2), _)) -> (
+  	let mapping = 
+  		add_to_agent_name_id_map name_1 id_1 (Action action) agent_name_map
+			in
+  	add_to_agent_name_id_map name_1 id_1 (Action action) mapping
+  )
+	| Instantiation.Free ((agent_id, agent_name), _) ->
+  	add_to_agent_name_id_map agent_name agent_id (Action action) agent_name_map
+	| Instantiation.Remove (agent_id, agent_name) ->
+  	add_to_agent_name_id_map agent_name agent_id (Action action) agent_name_map 
 
 let make_agent_id_to_test_action inst_list = 
-	match inst_list with
-	| Tests test_list -> (make_agent_id_to_test test_list)
-	| Actions action_list -> (make_agent_id_to_action action_list)
+	let add_to_map agent_name_map test_action =
+		match test_action with
+		| Test test -> add_agent_id_to_test agent_name_map test
+		| Action action -> add_agent_id_to_action agent_name_map action
+	in
+	List.fold_left add_to_map IntMap.empty inst_list
 
 let get_structs_for_concretization story_inst_list trace_inst_list = 
 	let story_map = make_agent_id_to_test_action story_inst_list in
 	let trace_map = make_agent_id_to_test_action trace_inst_list in
 	let add_agent_names agent_name agent_id_map cur_set = 
 		let add_agent_ids agent_id check_list cur_name_set = 
-			Set.add (agent_name, agent_id) cur_name_set
+			IntPairSet.add (agent_name, agent_id) cur_name_set
 	  in
-		Map.fold add_agent_ids agent_id_map cur_set 
+		IntMap.fold add_agent_ids agent_id_map cur_set 
 	in
 	let story_set =
-		Map.fold (Map.fold []) story_map Set.empty
+		IntMap.fold add_agent_names story_map IntPairSet.empty
 	in
 	(story_map, trace_map, story_set)
 
@@ -412,10 +408,10 @@ let pair_matches_help story_agent_id trace_agent_id mapping =
 	let (story_name, story_id) = story_agent_id in 
 	let (trace_name, trace_id) = trace_agent_id in
 	if IntPairMap.mem story_agent_id story_concretized then (
-		if not story_name = trace_name then false 
+		if not (story_name = trace_name) then false 
 		else ((IntPairMap.find story_agent_id story_concretized) = trace_id) 
 	)
-	else (not IntPairMap.mem trace_agent_id trace_concretized) 
+	else (not (IntPairSet.mem trace_agent_id trace_concretized))
 
 let pair_matches story_bind trace_bind agent_name story_id trace_id mapping =
 	let (story_bind_1, story_bind_2) = story_bind in
@@ -444,6 +440,7 @@ let pair_matches story_bind trace_bind agent_name story_id trace_id mapping =
 	then
 		((story_site_1 = trace_site_1) && 
 			(pair_matches_help (story_name_1, story_id_1) (trace_name_1, trace_id_1) mapping))
+	else false
 
 let check_match_test story_item trace_item story_agent_id trace_id mapping = 
 	let (agent_name, story_id) = story_agent_id in
@@ -459,9 +456,10 @@ let check_match_test story_item trace_item story_agent_id trace_id mapping =
   | (Instantiation.Has_Binding_type (((_, _), story_site), story_state),
   	Instantiation.Has_Binding_type (((_, _), trace_site), trace_state)) ->
    	 ((story_site = trace_site) && (story_state = trace_state))
-  | (Instantiation.Is_Bound_to story_bind,
-  	 Instantiation.Is_Bound_to trace_bind) ->
-		pair_matches story_bind trace_bind agent_name story_id trace_id mapping  
+  | (Instantiation.Is_Bound_to (story_bind_1, story_bind_2),
+  	 Instantiation.Is_Bound_to (trace_bind_1, trace_bind_2)) ->
+		pair_matches (story_bind_1, story_bind_2) (trace_bind_1, trace_bind_2) 
+			agent_name story_id trace_id mapping  
   | (_, _) -> false
 
 let check_match_action story_item trace_item story_agent_id trace_id mapping = 
@@ -472,33 +470,37 @@ let check_match_action story_item trace_item story_agent_id trace_id mapping =
 	| (Instantiation.Mod_internal (((_, _), story_site), story_state),
 		Instantiation.Mod_internal (((_, _), trace_site), trace_state)) ->
 		((story_site = trace_site) && (story_state = trace_state))
-	| (Instantiation.Bind story_bind, Instantiation.Bind trace_bind) -> 
-		pair_matches story_bind trace_bind agent_name story_id trace_id mapping  
-	| (Instantiation.Bind_to story_bind, Instantiation.Bind_to trace_bind) -> 
-		pair_matches story_bind trace_bind agent_name story_id trace_id mapping  	
+	| (Instantiation.Bind (story_bind_1, story_bind_2), 
+		Instantiation.Bind (trace_bind_1, trace_bind_2)) -> 
+		pair_matches (story_bind_1, story_bind_2) (trace_bind_1, trace_bind_2) 
+			agent_name story_id trace_id mapping  
+	| (Instantiation.Bind_to (story_bind_1, story_bind_2), 
+		Instantiation.Bind_to (trace_bind_1, trace_bind_2)) -> 
+		pair_matches (story_bind_1, story_bind_2) (trace_bind_1, trace_bind_2) 
+			agent_name story_id trace_id mapping 
 	| (Instantiation.Free ((_, _), story_site), 
 		Instantiation.Free ((_, _), trace_site)) -> (story_site = trace_site)
 	| (Instantiation.Remove (_, _), Instantiation.Remove (_, _)) -> true
 	| (_, _) -> false
 
-let check_match_test_action story_item trace_item story_agent_id trace_id mapping = 
-	match (story_item, trace_item) with
+let check_match_test_action story_item trace_item story_agent_id trace_id mapping =
+	 match (story_item, trace_item) with
 	| (Test story_test, Test trace_test) -> 
-		check_match_test story_test trace_test mapping
-	| (Action story_action, Test story_action) -> 
-		check_match_action story_action trace_action mapping
+		(check_match_test story_test trace_test story_agent_id trace_id mapping)
+	| (Action story_action, Action trace_action) -> 
+		(check_match_action story_action trace_action story_agent_id trace_id mapping)
+	| (_, _) -> false
 
 let story_trace_agent_id_matches story_agent_id trace_id structs mapping = 
 	let (story_map, trace_map, story_set) = structs in
 	let (agent_name, story_id) = story_agent_id in
-	let (story_concretized, trace_concretized) = mapping in
-	if not IntMap.mem agent_name story_map then false
+	if not (IntMap.mem agent_name story_map) then false
 	else let story_agent_id_map = IntMap.find agent_name story_map in 
-	if not IntMap.mem story_id story_agent_id_map then false
+	if not (IntMap.mem story_id story_agent_id_map) then false
 	else let story_items = IntMap.find story_id story_agent_id_map in 
-	if not IntMap.mem agent_name trace_map then false
+	if not (IntMap.mem agent_name trace_map) then false
 	else let trace_agent_id_map = IntMap.find agent_name trace_map in 
-	if not IntMap.mem trace_id trace_agent_id_map then false
+	if not (IntMap.mem trace_id trace_agent_id_map) then false
 	else let trace_items = IntMap.find trace_id trace_agent_id_map in
 	let check_matches (trace_items_left, matches_so_far) next_story_item =
 		if not matches_so_far then (trace_items_left, false)
@@ -514,7 +516,9 @@ let story_trace_agent_id_matches story_agent_id trace_id structs mapping =
 			let matched_trace_item = List.fold_left find_match None trace_items_left in
 			match matched_trace_item with
 			| Some matched_item -> 
-				List.filter (fun trace_item -> (trace_item <> matched_item)) trace_items_left
+				let filtered_trace_list = 
+					List.filter (fun trace_item -> (trace_item <> matched_item)) trace_items_left
+				in (filtered_trace_list, true)
 			| None -> (trace_items_left, false)
 		)
 	in
@@ -524,11 +528,12 @@ let story_trace_agent_id_matches story_agent_id trace_id structs mapping =
 	else false
 
 let find_concretization_helper story_inst_list trace_inst_list mapping = 
-	let find_concretization_rec structs mapping = 
+	let rec find_concretization_rec structs mapping = 
 		let (story_name_to_ids, trace_name_to_ids, story_agent_ids) = structs in
-		if (Set.cardinal story_agent_ids = 0) then Some [mapping];
-		let story_agent_id = Set.choose story_agent_ids in
-		let story_agent_ids = Set.remove story_agent_id story_agent_ids in
+		if (IntPairSet.cardinal story_agent_ids = 0) then Some [mapping]
+		else (
+		let story_agent_id = IntPairSet.choose story_agent_ids in
+		let story_agent_ids = IntPairSet.remove story_agent_id story_agent_ids in
 		let new_structs = (story_name_to_ids, trace_name_to_ids, story_agent_ids) in
 		let (story_to_trace_id, trace_concretized) = mapping in
 		if IntPairMap.mem story_agent_id story_to_trace_id then (
@@ -544,14 +549,18 @@ let find_concretization_helper story_inst_list trace_inst_list mapping =
 		  	let potential_trace_ids = IntMap.find s_agent_name trace_name_to_ids in
 				let check_id_match trace_id trace_val cur_mappings = 
 					(* Check that trace id not in concretization *)
-					if not (Set.mem (s_agent_name, trace_id) trace_concretized) then
-					if story_trace_agent_id_matches story_agent_id trace_id structs mapping
-					then (
-						let new_s_to_t = IntPairMap.add story_agent_id trace_id story_to_trace_id in
-						let new_t_concrete = 
-							Set.add (s_agent_name, trace_id) trace_concretized in
-						cur_mappings @ [(new_s_to_t, new_t_concrete)]
+					if not (IntPairSet.mem (s_agent_name, trace_id) trace_concretized) then (
+						if story_trace_agent_id_matches story_agent_id trace_id 
+							structs mapping then (
+							let new_s_to_t = 
+								IntPairMap.add story_agent_id trace_id story_to_trace_id in
+							let new_t_concrete = 
+								IntPairSet.add (s_agent_name, trace_id) trace_concretized in
+							cur_mappings @ [(new_s_to_t, new_t_concrete)]
+						)
+						else cur_mappings
 					)
+					else cur_mappings 
 			  in
 		  	let new_mappings = IntMap.fold check_id_match potential_trace_ids [] in
 		  	if (List.length new_mappings) = 0 then None
@@ -559,7 +568,7 @@ let find_concretization_helper story_inst_list trace_inst_list mapping =
 		  	(* Recursive call for each of new_mappings, to assemble full output *)
 		  	let assemble_potential_mappings cur_completed_mappings partial_mapping = 
 		  		match (find_concretization_rec new_structs partial_mapping) with
-		  		| Some completed_mapping -> cur_completed_mappings @ [completed_mapping]
+		  		| Some completed_mapping -> cur_completed_mappings @ completed_mapping
 		  		| None -> cur_completed_mappings
 		  	in
 		  	let completed_mappings = 
@@ -568,23 +577,31 @@ let find_concretization_helper story_inst_list trace_inst_list mapping =
 		  	else Some completed_mappings
 		  )
 			else None
-		) 
+		)
+		)
 	in
 	let structs = 
 		get_structs_for_concretization story_inst_list trace_inst_list in
 	find_concretization_rec structs mapping
 
+let make_test_actions_from_tests tests = List.map (fun x -> Test x) tests
+
+let make_test_actions_from_actions actions = List.map (fun x -> Action x) actions
 
 let find_concretization mapping story_inst trace_inst = 
 	let (story_tests, (story_actions, _, _)) = story_inst in
 	let (trace_tests, (trace_actions, _, _)) = trace_inst in
+	let story_ts = make_test_actions_from_tests story_tests in
+	let trace_ts = make_test_actions_from_tests trace_tests in
+	let story_as = make_test_actions_from_actions story_actions in
+	let trace_as = make_test_actions_from_actions trace_actions in
 	let test_mappings_option = 
-		find_concretization_helper story_tests trace_tests true mapping in
+		find_concretization_helper story_ts trace_ts mapping in
 	match test_mappings_option with
 	| Some test_mappings -> (
 		let action_fun mappings_so_far test_mapping = 
 		 	let action_mappings_option = 
-		 		find_concretization_helper story_actions trace_actions false test_mapping
+		 		find_concretization_helper story_as trace_as test_mapping
 		 	in
 		 	match action_mappings_option with
 		 	| Some action_mappings -> mappings_so_far @ action_mappings
