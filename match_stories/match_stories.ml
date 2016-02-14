@@ -96,6 +96,17 @@ module StoryEvent =
 type adjacency_list_t = (StoryEvent.t list) IntMap.t 
 type story_t = (adjacency_list_t * adjacency_list_t) * (StoryEvent.t list)
 
+(************************************************************************** 
+ * Obtain marshaled story from file.
+ *)
+let get_stories_from_file () = 
+	let trace_grid_list =	Kappa_files.from_marshalized_story 
+		(fun d -> Marshal.from_channel d) in
+	let convert_to_story (trace, enriched_grid) = 
+		
+	in
+	List.map convert_to_story trace_grid_list
+
 (**************************************************************************
 * Create test story for weakly compressed story matching algorithm.
 * Eventually we will read this from user input depending on the story 
@@ -155,6 +166,53 @@ let check_test_action_matches env first_event second_event =
 	  let filtered_tests = List.filter (filter_agents_by_match agent_list) tests in
 	  (List.length filtered_tests) <> 0
 	)
+(*
+let add_agent_id_to_test agent_name_map test = 
+	match test with 
+  | Instantiation.Is_Here (agent_id, agent_name) ->
+  	add_to_agent_name_id_map agent_name agent_id (Test test) agent_name_map
+  | Instantiation.Has_Internal (((agent_id, agent_name), _), _) ->
+  	add_to_agent_name_id_map agent_name agent_id (Test test) agent_name_map	  	
+  | Instantiation.Is_Free ((agent_id, agent_name), _) ->
+  	add_to_agent_name_id_map agent_name agent_id (Test test) agent_name_map
+  | Instantiation.Is_Bound ((agent_id, agent_name), _) ->
+  	add_to_agent_name_id_map agent_name agent_id (Test test) agent_name_map
+  | Instantiation.Has_Binding_type (((agent_id, agent_name), _), _) ->
+  	add_to_agent_name_id_map agent_name agent_id (Test test) agent_name_map
+  | Instantiation.Is_Bound_to (((id_1, name_1), _), ((id_2, name_2), _)) -> (
+  	let mapping = 
+  		add_to_agent_name_id_map name_1 id_1 (Test test) agent_name_map
+			in
+  	add_to_agent_name_id_map name_1 id_1 (Test test) mapping
+  )
+
+let add_agent_id_to_action agent_name_map action = 
+	match action with 
+	| Instantiation.Create ((agent_id, agent_name), _) ->
+  	add_to_agent_name_id_map agent_name agent_id (Action action) agent_name_map
+	| Instantiation.Mod_internal (((agent_id, agent_name), _), _) ->
+  	add_to_agent_name_id_map agent_name agent_id (Action action) agent_name_map
+	| Instantiation.Bind (((id_1, name_1), _), ((id_2, name_2), _)) -> (
+  	let mapping = 
+  		add_to_agent_name_id_map name_1 id_1 (Action action) agent_name_map
+			in
+  	add_to_agent_name_id_map name_1 id_1 (Action action) mapping
+  )
+	| Instantiation.Bind_to (((id_1, name_1), _), ((id_2, name_2), _)) -> (
+  	let mapping = 
+  		add_to_agent_name_id_map name_1 id_1 (Action action) agent_name_map
+			in
+  	add_to_agent_name_id_map name_1 id_1 (Action action) mapping
+  )
+	| Instantiation.Free ((agent_id, agent_name), _) ->
+  	add_to_agent_name_id_map agent_name agent_id (Action action) agent_name_map
+	| Instantiation.Remove (agent_id, agent_name) ->
+  	add_to_agent_name_id_map agent_name agent_id (Action action) agent_name_map 
+
+let scramble_ids env first_event second_event = 
+	let (_, (_, (tests_1, (actions_1, _, _)))) = first_event in
+	let (_, (_, (tests_2, (actions_2, _, _)))) = second_event in 
+	() *)
 
 (* Creates a toy story for simple.ka *)
 (* Here we show an example of creating a weakly compressed story for 
@@ -299,26 +357,6 @@ let check_weak_story_embeds env steps =
  * Map A of agent name to (map of agent ids to (list of tests / actions))
  * Need for both trace and story. 
  * Set A of (agent name, agent id) for the story. 
- *
- * Need to add throughout: 
- * trace_concretized... all the trace's agent name, id pairs that have been
- * assigned already to the story's agents.
- *)
-
-(* 
- * Maintain list of visited (agent name, agent id) pairs from story
- * Pick a new story agent id (choose from Set A above), and check that it's not visited,
- * and mark as visited.
- * Check if it is in the mapping. If so, run check_id_match; if fail return None.
- * Else for each matching trace agent id (from Map A) that is not in trace_concretized,
- * check for match via check_id_match
- * check_id_match: For each story test that includes this agent id (from Map A), 
- * check for match in trace (from Map A), and check that there were no extra 
- * trace tests including this agent id. For pair, it is compatible if the other 
- * story agent id is in the mapping and maps to the right thing, or if both story 
- * and trace agent ids are not in the mapping.
- * If no matches, return None. 
- * For each possible assignment, apply the mapping and recurse. 
  *)
 type 'a test_action_t = Test of Instantiation.concrete Instantiation.test 
 											| Action of Instantiation.concrete Instantiation.action
@@ -403,6 +441,22 @@ let get_structs_for_concretization story_inst_list trace_inst_list =
 	in
 	(story_map, trace_map, story_set)
 
+
+(* 
+ * Maintain list of visited (agent name, agent id) pairs from story
+ * Pick a new story agent id (choose from Set A above), and check that it's not visited,
+ * and mark as visited.
+ * Check if it is in the mapping. If so, run check_id_match; if fail return None.
+ * Else for each matching trace agent id (from Map A) that is not in trace_concretized,
+ * check for match via check_id_match
+ * check_id_match: For each story test that includes this agent id (from Map A), 
+ * check for match in trace (from Map A), and check that there were no extra 
+ * trace tests including this agent id. For pair, it is compatible if the other 
+ * story agent id is in the mapping and maps to the right thing, or if both story 
+ * and trace agent ids are not in the mapping.
+ * If no matches, return None. 
+ * For each possible assignment, apply the mapping and recurse. 
+ *)
 let pair_matches_help story_agent_id trace_agent_id mapping = 
 	let (story_concretized, trace_concretized) = mapping in
 	let (story_name, story_id) = story_agent_id in 

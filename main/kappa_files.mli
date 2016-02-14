@@ -10,6 +10,10 @@ val get_data : unit -> string
 val set_marshalized : string -> unit
 val with_marshalized : (out_channel -> unit) -> unit
 
+val set_marshalized_story : string -> unit
+val with_marshalized_story : (out_channel -> unit) -> unit
+val from_marshalized_story : (in_channel -> 'a) -> 'a
+
 val set_cflow : string -> unit
 val with_cflow_file :
   string list -> string -> (Format.formatter -> unit) -> unit

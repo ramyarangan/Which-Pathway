@@ -49,7 +49,17 @@ let max_number_of_itterations = None
 let always = (fun _ -> true)
 let do_not_log parameter = (S.PH.B.PB.CI.Po.K.H.set_log_step parameter false)
 
-										
+let marshal_weak_story trace_list logger handler = 
+	let add_enriched_grid trace = 
+		let grid = U.convert_trace_into_grid trace handler in
+		let enriched_grid = 
+			U.enrich_grid_with_transitive_past_of_each_node_without_a_progress_bar logger grid in
+		(trace, enriched_grid)
+	in
+	let marshal_info = List.map add_enriched_grid trace_list in 
+	Kappa_files.with_marshalized_story
+	  (fun d -> Marshal.to_channel d marshal_info [Marshal.Closures])
+
 let compress_and_print logger env log_info step_list =
   let parameter = S.PH.B.PB.CI.Po.K.H.build_parameter () in
   let parameter = S.PH.B.PB.CI.Po.K.H.set_log_step parameter log_step in
@@ -77,6 +87,7 @@ let compress_and_print logger env log_info step_list =
   let causal_trace_on = Parameter.get_causal_trace mode in
   let weak_compression_on = Parameter.get_weak_compression mode in
   let strong_compression_on = Parameter.get_strong_compression mode in
+  let marshal_weak_story_on = !Parameter.saveStory in
   let error = U.error_init in       
   let handler =
     {
@@ -262,7 +273,7 @@ let compress_and_print logger env log_info step_list =
 					      error,log_info,story_list
 			  		) (error,log_info,table2) (List.rev list)
         in 
-	      let error,causal_story_list = U.flatten_story_table  parameter handler error causal_story_list in 
+	      let error,causal_story_list = U.flatten_story_table parameter handler error causal_story_list in 
         error,log_info,causal_story_list 
 	    else 
 	      error,log_info,table2 
@@ -276,18 +287,23 @@ let compress_and_print logger env log_info step_list =
 			begin 
         let () = Format.fprintf logger "\t - weak flow compression (%i)@." n_causal_stories in 
         let parameter = S.PH.B.PB.CI.Po.K.H.set_compression_weak parameter in 
-        let error,weak_stories_table =  U.create_story_table parameter handler error in 		
-        let error,(log_info,weakly_story_table) = 
+        let error,weak_stories_table =  U.create_story_table parameter handler error in
+        let trace_list = [] in	
+        let error,(log_info,(weakly_story_table,trace_list)) = 
 		    	U.fold_story_table_with_progress_bar logger parameter handler error "weak compression" 
-		      	(fun parameter handler error trace info (log_info,story_list) ->
-		       	let error,log_info,list = U.weakly_compress logger parameter handler error log_info trace in 
-		       	let error,story_list,log_info = List.fold_left
-			   			(fun (error,story_list,log_info) trace -> 
-			    		U.store_trace parameter handler error info log_info trace story_list)
-			   			(error,story_list,log_info) list
-		       	in error,(log_info,story_list))
-		      causal_story_table (log_info,weak_stories_table)
-        in 
+		      	(fun parameter handler error trace info (log_info,(story_list,trace_list)) ->
+			       	let error,log_info,list = 
+			       		U.weakly_compress logger parameter handler error log_info trace 
+			       	in
+			       	let trace_list = trace_list @ list in
+			       	let error,story_list,log_info = List.fold_left
+				   			(fun (error,story_list,log_info) trace -> 
+				    		U.store_trace parameter handler error info log_info trace story_list)
+				   			(error,story_list,log_info) list
+			       	in error,(log_info,(story_list,trace_list))
+		        ) causal_story_table (log_info,(weak_stories_table,trace_list))
+        in
+        let () = if marshal_weak_story_on then (marshal_weak_story trace_list logger handler) else () in
 	      let error,weakly_story_table = 
 	      	U.flatten_story_table parameter handler error weakly_story_table in
         error,weakly_story_table

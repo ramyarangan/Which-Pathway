@@ -53,6 +53,12 @@ let () =
      "load simulation package instead of kappa files") ;
     ("-make-sim", Arg.String Kappa_files.set_marshalized,
      "save kappa files as a simulation package") ;
+    ("-save-story", Arg.String (fun str -> Kappa_files.set_marshalized_story str; 
+      Parameter.saveStory := true),
+    "save weakly compressed story to this file") ;
+    ("-match-story", Arg.String (fun str -> Kappa_files.set_marshalized_story str; 
+      Parameter.matchStory := true),
+      "match with weakly compressed story from file") ;
     ("-dump-cc", Arg.String Kappa_files.set_ccFile,
      "file name for dumping the domain of observables") ;
     ("--implicit-signature",

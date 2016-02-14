@@ -62,6 +62,8 @@ let weakCompression = ref false
 let strongCompression = ref false 
 let mazCompression = ref false 
 let showIntroEvents = ref false
+let saveStory = ref false
+let matchStory = ref false
 
 (*XLS output for the grids during compression*)
 let dump_grid_before_weak_compression = false
