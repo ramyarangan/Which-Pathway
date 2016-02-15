@@ -1,7 +1,7 @@
-+ Command line is: 'KaSim' '-i' 'create.ka' '-seed' '611463625' '-e' '500' '-d' 'output'
++ Command line is: 'KaSim' '-i' 'create.ka' '-seed' '931056658' '-e' '500' '-d' 'output' '--time-independent'
 Parsing create.ka...
 done
-+ Initialized random number generator with seed 611463625
++ Initialized random number generator with seed 931056658
 + Building initial simulation conditions...
 + Compiling...
 	 -simulation parameters
@@ -11,42 +11,24 @@ done
 + Compute the contact map
 	 -variable declarations
 	 -rules
-	 -observables
 	 -perturbations
+	 -observables
 	 -initial conditions
 	 Done
 ____________________________________________________________
 ############################################################
 	 - removing events occurring after the last observable:
- (-2 events)
+ (-4 events)
 + Producing causal compressions
 	 - splitting initial events (no change)
-	 - detecting siphons (+197 events)
-	 - cutting concurrent events (-1439 events)
+	 - detecting siphons (+176 events)
+	 - cutting concurrent events (-1440 events)
 	 - detecting pseudo inverse events (no change)
-	 - detecting siphons (+65 events)
-	 - cutting concurrent events (-67 events)
-	 - detecting pseudo inverse events (no change)
-	 - detecting siphons (+64 events)
-	 - cutting concurrent events (-64 events)
+	 - detecting siphons (+59 events)
+	 - cutting concurrent events (-59 events)
 	 - detecting pseudo inverse events (no change)
 	 - blackboard generation
-	 - computing causal past of each observed events (65)
-
-____________________________________________________________
-############################################################
-
-Stats:
- number of step   : 320
- longest story    : 8
- average length   : 5.13846153846
- geometric mean   : 5.17687164222
-
-	 - causal flow compression (65)
-
-____________________________________________________________
-############################################################
-
+	 - computing causal past of each observed events (59)
 
 
 	 - weak flow compression (2)

@@ -1,4 +1,4 @@
-+ Command line is: 'KaSim' '-i' 'internal.ka' '-seed' '240056667' '-e' '30000' '-d' 'output'
++ Command line is: 'KaSim' '-i' 'internal.ka' '-seed' '240056667' '-e' '30000' '-d' 'output' '--time-independent'
 Parsing internal.ka...
 done
 + Initialized random number generator with seed 240056667
@@ -11,8 +11,8 @@ done
 + Compute the contact map
 	 -variable declarations
 	 -rules
-	 -observables
 	 -perturbations
+	 -observables
 	 -initial conditions
 	 Done
 ____________________________________________________________
@@ -42,17 +42,6 @@ ____________________________________________________________
 	 - detecting pseudo inverse events (no change)
 	 - blackboard generation
 	 - computing causal past of each observed events (3024)
-
-____________________________________________________________
-############################################################
-
-Stats:
- number of step   : 11430
- longest story    : 3
- average length   : 3.
- geometric mean   : 3.
-
-	 - causal flow compression (3024)
 
 ____________________________________________________________
 ############################################################

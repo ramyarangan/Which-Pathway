@@ -47,12 +47,14 @@ type rule = {
     add_token: ((mixture,string) ast_alg_expr Location.annot *
 		  string Location.annot) list;
     k_def: (mixture,string) ast_alg_expr Location.annot ;
-    k_absolute: bool;
     k_un:
       ((mixture,string) ast_alg_expr Location.annot *
-	 (mixture,string) ast_alg_expr Location.annot option) option;
+	 int Location.annot option) option;
     (*k_1:radius_opt*)
     k_op: (mixture,string) ast_alg_expr Location.annot option ;
+    k_op_un:
+      ((mixture,string) ast_alg_expr Location.annot *
+	 int Location.annot option) option; 
     (*rate for backward rule*)
   }
 
@@ -140,8 +142,7 @@ type ('agent,'mixture,'id,'rule) compil =
 	(string * float * string) list
     }
 
-val result : (agent,mixture,string,rule) compil ref
-val init_compil : unit -> unit
+val empty_compil : (agent,mixture,string,rule) compil
 
 val no_more_site_on_right : bool -> port list -> port list -> bool
 

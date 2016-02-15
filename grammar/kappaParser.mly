@@ -28,61 +28,46 @@
 %left AND
 
 %start start_rule
-%type <unit> start_rule
+%type <(Ast.agent,Ast.mixture,string,Ast.rule) Ast.compil -> (Ast.agent,Ast.mixture,string,Ast.rule) Ast.compil> start_rule
 
 %% /*Grammar rules*/
 
 newline:
     | NEWLINE start_rule {$2}
-    | EOF {()};
+    | EOF {fun c -> c};
 
 start_rule:
     | newline {$1}
     | rule_expression newline
-		       {Ast.result := {!Ast.result with
-				       Ast.rules = $1::!Ast.result.Ast.rules};
-		       $2}
+        {fun c -> let r = $2 c in {r with Ast.rules = $1::r.Ast.rules}}
     | instruction newline
-		  {
-		    let inst = $1 in
-		    begin
-		      match inst with
+		  { fun c -> let r = $2 c in
+		      match $1 with
 		      | Ast.SIG ag ->
-			 (Ast.result:={!Ast.result with
-					Ast.signatures=ag::!Ast.result.Ast.signatures}
-			 )
+			 {r with Ast.signatures=ag::r.Ast.signatures}
 		      | Ast.TOKENSIG (str_pos) ->
-			 (Ast.result:={!Ast.result with
-					Ast.tokens=str_pos::!Ast.result.Ast.tokens}
-			 )
+			 {r with Ast.tokens=str_pos::r.Ast.tokens}
 		      | Ast.VOLSIG (vol_type,vol,vol_param) ->
-			 (Ast.result := {!Ast.result with
-					  Ast.volumes=(vol_type,vol,vol_param)::!Ast.result.Ast.volumes})
+			 {r with Ast.volumes=(vol_type,vol,vol_param)::r.Ast.volumes}
 		      | Ast.INIT (opt_vol,init_t) ->
-			 (Ast.result := {!Ast.result with
-					  Ast.init=(opt_vol,init_t)::!Ast.result.Ast.init})
+			 {r with Ast.init=(opt_vol,init_t)::r.Ast.init}
 		      | Ast.DECLARE var ->
-			 (Ast.result := {!Ast.result with
-					  Ast.variables = var::!Ast.result.Ast.variables})
+			 {r with Ast.variables = var::r.Ast.variables}
 		      | Ast.OBS ((lbl,pos),_ as var) ->
 			 (*for backward compatibility, shortcut for %var + %plot*)
-			 Ast.result :=
-			   {!Ast.result with
-			     Ast.variables = var::!Ast.result.Ast.variables;
+			   {r with
+			     Ast.variables = var::r.Ast.variables;
 			     Ast.observables = (Ast.OBS_VAR lbl,pos)
-						 ::!Ast.result.Ast.observables}
+						 ::r.Ast.observables}
 		      | Ast.PLOT expr ->
-			 (Ast.result := {!Ast.result with
-					  Ast.observables = expr::!Ast.result.Ast.observables})
+			 {r with Ast.observables = expr::r.Ast.observables}
 		      | Ast.PERT ((pre,effect,opt),pos) ->
-			 (Ast.result := {!Ast.result with
-					  Ast.perturbations =
-					    ((pre,effect,opt),pos)
-					      ::!Ast.result.Ast.perturbations})
+			 {r with
+			  Ast.perturbations =
+			   ((pre,effect,opt),pos)::r.Ast.perturbations}
 		      | Ast.CONFIG (param_name,value_list) ->
-			 (Ast.result := {!Ast.result with
-					  Ast.configurations = (param_name,value_list)::!Ast.result.Ast.configurations})
-		    end ; $2
+			 {r with
+			  Ast.configurations = (param_name,value_list)::r.Ast.configurations}
 		  }
     | error
 	{raise (ExceptionDefn.Syntax_Error (add_pos "Syntax error"))}
@@ -284,16 +269,15 @@ mixture:
 ;
 
 rule_expression:
-    | rule_label lhs_rhs arrow lhs_rhs rate
+    | rule_label lhs_rhs arrow lhs_rhs birate
 		 { let pos =
 		     Location.of_pos (Parsing.rhs_start_pos 2)
 				     (Parsing.symbol_end_pos ()) in
-		   let (absolute,k2,k1,kback) = $5 in
+		   let (k2,k1,kback,kback1) = $5 in
 		   let lhs,token_l = $2 and rhs,token_r = $4 in
 		   ($1,({Ast.lhs=lhs; Ast.rm_token = token_l; Ast.arrow=$3;
 			 Ast.rhs=rhs; Ast.add_token = token_r;
-			 Ast.k_absolute=absolute;
-			 Ast.k_def=k2; Ast.k_un=k1; Ast.k_op=kback},pos))
+			 Ast.k_def=k2; Ast.k_un=k1; Ast.k_op=kback; Ast.k_op_un=kback1},pos))
 		 }
     ;
 
@@ -348,25 +332,28 @@ alg_expr:
     | alg_expr POW alg_expr {add_pos (Ast.BIN_ALG_OP(Operator.POW,$1,$3))}
     | alg_expr MODULO alg_expr {add_pos (Ast.BIN_ALG_OP(Operator.MODULO,$1,$3))}
 
-rate:
-    | AT alg_expr OP_PAR alg_with_radius CL_PAR {(false,$2,Some $4,None)}
-    | AT alg_expr {(false,$2,None,None)}
-    | AT alg_expr COMMA alg_expr {(false,$2,None,Some $4)}
-    | AT AT alg_expr OP_PAR alg_with_radius CL_PAR {(true,$3,Some $5,None)}
-    | AT AT alg_expr {(true,$3,None,None)}
-    | AT AT alg_expr COMMA alg_expr {(true,$3,None,Some $5)}
+birate:
+    | AT rate {let (k2,k1) = $2 in (k2,k1,None,None)}
+    | AT rate COMMA rate {let (k2,k1) = $2 in 
+			  let (kback,kback1) = $4 in
+			  (k2,k1,Some kback,kback1)}
     | {let pos =
-        Location.of_pos (Parsing.symbol_start_pos ()) (Parsing.symbol_end_pos ()) in
-      let () = ExceptionDefn.warning
+         Location.of_pos (Parsing.symbol_start_pos ()) (Parsing.symbol_end_pos ()) in
+       let () = ExceptionDefn.warning
 		  ~pos
 		  (fun f -> Format.pp_print_string
-				f "Rule has no kinetics. Default rate of 0.0 is assumed.") in
-				(false,Location.dummy_annot (Ast.CONST (Nbr.F 0.)),None,None)}
+			      f "Rule has no kinetics. Default rate of 0.0 is assumed.") in
+       (Location.dummy_annot (Ast.CONST (Nbr.F 0.)),None,None,None)}
+    ;
+
+rate:
+    | alg_expr OP_PAR alg_with_radius CL_PAR {($1,Some $3)}
+    | alg_expr {($1,None)}
     ;
 
 alg_with_radius:
     | alg_expr {($1,None)}
-    | alg_expr TYPE alg_expr {($1,Some $3)}
+    | alg_expr TYPE INT {($1,Some (add_pos $3))}
     ;
 
 multiple_mixture:

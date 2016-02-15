@@ -19,10 +19,10 @@
   * under the terms of the GNU Library General Public License *)
 
 module DynArray =
-  (functor (G:LargeArray.GenArray) -> 
-    (struct
-      type 'a t = 
-          {
+  (functor (G:GenArray.GenArray) ->
+  (struct
+      type 'a t =
+        {
            array: 'a G.t ref;
            current_size: int ref;
            default: 'a
@@ -155,6 +155,8 @@ module DynArray =
             }
       let iter f a = G.iter f !(a.array)
       let iteri f a = G.iteri f !(a.array)
+      let fold_lefti f b a = G.fold_lefti f b !(a.array)
+      let fold_righti f a b = G.fold_righti f !(a.array) b
 
       let blit a1 ofs1 a2 ofs2 len =
 	if len < 0 || ofs1 < 0 || ofs1 > length a1 - len
@@ -171,6 +173,8 @@ module DynArray =
 	    for i = 0 to len - 1 do
 	      G.set !(a2.array) (ofs2 + i) (G.get !(a1.array) (ofs1 + i))
 	    done
-				
-	end: LargeArray.GenArray))
 
+      let print ?trailing pr_s pr_a f a =
+	G.print ?trailing pr_s pr_a f !(a.array)
+
+	end:GenArray.GenArray))

@@ -3,10 +3,12 @@ let marshalizedOutFile = ref ""
 let snapshotFileName = ref "snap"
 let ccFileName = ref ""
 let cflowFileName = ref "cflow.dot"
-let profilingName = ref "profiling.txt"
+let branch_and_cut_engine_profilingName = ref "compression_status.txt"
+let tasks_profilingName = ref "profiling.txt"
 let influenceFileName = ref ""
 let fluxFileName = ref ""
 let outputDataName = ref "data.out"
+let distanceFileName = ref "distances"
 
 let path f =
   if Filename.is_relative f && Filename.dirname f = Filename.current_dir_name
@@ -96,8 +98,6 @@ let with_formatter str f =
 
 let (openOutDescriptors:out_channel list ref) = ref []
 
-let add_out_desc d = openOutDescriptors := d::!openOutDescriptors
-
 let set_dir s =
   let () = try
       if not (Sys.is_directory s)
@@ -121,8 +121,8 @@ let set_cflow s = cflowFileName := s
 let with_cflow_file l e f =
   with_formatter (get_fresh_filename !cflowFileName l "" e) f
 
-let open_profiling () = open_out !profilingName
-
+let open_tasks_profiling () = open_out !tasks_profilingName
+let open_branch_and_cut_engine_profiling () = open_out !branch_and_cut_engine_profilingName
 let set_flux nme event =
   let () =
     match nme with
@@ -134,13 +134,6 @@ let set_flux nme event =
 let with_flux str f =
   with_formatter (match str with "" -> !fluxFileName | _ -> str) f
 
-let open_snapshot str event ext =
-  let str = if str="" then !snapshotFileName else str in
-  let desc =
-    open_out_fresh_filename
-      str [] (string_of_int event) ext in
-  let () = add_out_desc desc in
-  desc
 let with_snapshot str event ext f =
   let str = if str="" then !snapshotFileName else str in
   let desc =
@@ -151,6 +144,14 @@ let with_snapshot str event ext f =
       Format.fprintf fr "# Snapshot [Event: %d]@.%t@?"(*", Time: %f"*)event f in
     close_out desc
 
+let with_unary_dist event f =
+  let desc = open_out_fresh_filename
+	       !distanceFileName [] (string_of_int event) "out" in
+  let fr = Format.formatter_of_out_channel desc in
+  let () =
+    Format.fprintf fr "%t@?" f in
+  close_out desc
+
 let set_influence s = influenceFileName := s
 let set_up_influence () =
   set_influence
@@ -160,10 +161,7 @@ let with_influence f = with_formatter !influenceFileName f
 let set_ccFile f = ccFileName := f
 let with_ccFile f = with_formatter !ccFileName f
 
-let close_out_desc desc =
-  let () = openOutDescriptors :=
-	     List.filter (fun x -> x != desc) !openOutDescriptors in
-  close_out desc
-
 let close_all_out_desc () =
-  List.iter (fun d -> close_out d) !openOutDescriptors
+  let () =
+    List.iter (fun d -> close_out d) !openOutDescriptors in
+  openOutDescriptors := []

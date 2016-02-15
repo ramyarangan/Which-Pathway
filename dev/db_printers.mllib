@@ -1,7 +1,7 @@
 Cache
+Stop
 Color
 SafeHeap
-ValMap
 Heap
 DynamicArray
 LargeArray
@@ -12,6 +12,10 @@ Renaming
 Random_tree
 List_utilities
 
+Circular_buffers
+Infinite_buffers
+Loggers
+
 Location
 Pp
 Pp_html
@@ -20,6 +24,7 @@ Parameter
 Kappa_files
 Nbr
 Operator
+ExceptionDefn_with_no_dep
 ExceptionDefn
 Counter
 
@@ -68,6 +73,7 @@ StoryProfiling
 Cflow_handler
 Kappa_instantiation
 Po_cut
+Predicate_maps
 Pseudo_inverse
 Blackboard_generation
 Blackboard
@@ -76,11 +82,13 @@ Generic_branch_and_cut_solver
 Dag
 Graph_closure
 Utilities
+Utilities_expert
 Causal
 Compression_main
 
 Raw_mixture
 Edges
+Navigation
 Connected_component
 Snip
 Edges

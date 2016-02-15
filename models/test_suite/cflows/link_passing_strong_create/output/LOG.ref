@@ -1,4 +1,4 @@
-+ Command line is: 'KaSim' '-i' 'link_passing_strong_create.ka' '-seed' '611463625' '-e' '100' '-d' 'output'
++ Command line is: 'KaSim' '-i' 'link_passing_strong_create.ka' '-seed' '611463625' '-e' '100' '-d' 'output' '--time-independent'
 Parsing link_passing_strong_create.ka...
 done
 + Initialized random number generator with seed 611463625
@@ -11,8 +11,8 @@ done
 + Compute the contact map
 	 -variable declarations
 	 -rules
-	 -observables
 	 -perturbations
+	 -observables
 	 -initial conditions
 	 Done
 ____________________________________________________________
@@ -21,22 +21,11 @@ ____________________________________________________________
  (-7 events)
 + Producing causal compressions
 	 - splitting initial events (no change)
-	 - detecting siphons (+13 events)
-	 - cutting concurrent events (-8 events)
+	 - detecting siphons (+12 events)
+	 - cutting concurrent events (-10 events)
 	 - detecting pseudo inverse events (no change)
 	 - blackboard generation
 	 - computing causal past of each observed events (19)
-Stats:
- number of step   : 128
- longest story    : 67
- average length   : 19.1578947368
- geometric mean   : 26.0182122449
-
-	 - causal flow compression (19)
-
-____________________________________________________________
-############################################################
-
 
 
 	 - weak flow compression (11)

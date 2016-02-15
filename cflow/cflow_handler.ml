@@ -2,7 +2,7 @@
   * cflow_handler.ml
   *
   * Creation:                      <2013-08-02 feret>
-  * Last modification: Time-stamp: <2015-12-02 11:21:41 feret>
+  * Last modification: Time-stamp: <2015-12-30 21:13:30 feret>
   *
   * Causal flow compression: a module for KaSim
   * Jérôme Feret, projet Abstraction, INRIA Paris-Rocquencourt
@@ -20,6 +20,7 @@
   * under the terms of the GNU Library General Public License *)
 
 
+  
 module type Cflow_handler =
   sig
     (**a struct which contains parameterizable options*)
@@ -42,14 +43,23 @@ module type Cflow_handler =
 	  kasa : Remanent_parameters_sig.parameters ;
 	  always_disambiguate_initial_states : bool  ;
 	  bound_on_itteration_number: int option ;
-	  reduce_graph_before_canonicalisation: bool ;
+	  time_independent: bool ;
 	}  
     type handler =   (*handler to interpret abstract values*)
         {
           env: Environment.t ;
+	  rule_name_cache: string array;
+	  agent_name_cache: string array;
+	  steps_by_column:  (int * Predicate_maps.predicate_value * bool) list Predicate_maps.QPredicateMap.t ;
         }
-    type 'a with_handler = parameter -> handler -> Exception.method_handler -> 'a
 
+    type 'a zeroary = parameter -> handler -> StoryProfiling.StoryStats.log_info -> Exception.method_handler -> Exception.method_handler * StoryProfiling.StoryStats.log_info * 'a
+    type ('a,'b) unary  = parameter -> handler -> StoryProfiling.StoryStats.log_info -> Exception.method_handler -> 'a -> Exception.method_handler * StoryProfiling.StoryStats.log_info * 'b
+    type ('a,'b,'c) binary  = parameter -> handler -> StoryProfiling.StoryStats.log_info -> Exception.method_handler -> 'a -> 'b -> Exception.method_handler * StoryProfiling.StoryStats.log_info * 'c
+    type ('a,'b,'c,'d) ternary  = parameter -> handler -> StoryProfiling.StoryStats.log_info -> Exception.method_handler -> 'a -> 'b -> 'c ->  Exception.method_handler * StoryProfiling.StoryStats.log_info * 'd
+    type ('a,'b,'c,'d,'e) quaternary  = parameter -> handler -> StoryProfiling.StoryStats.log_info -> Exception.method_handler -> 'a -> 'b -> 'c -> 'd -> Exception.method_handler * StoryProfiling.StoryStats.log_info * 'e	  
+ 
+																								      
     val do_not_bound_itterations: parameter -> parameter 									 
     val set_itteration_bound: parameter -> int -> parameter 
     val get_bound_on_itteration_number: parameter -> int option 
@@ -66,6 +76,7 @@ module type Cflow_handler =
     val get_log_step: parameter -> bool
     val set_debugging_mode: parameter -> bool -> parameter
     val get_debugging_mode: parameter -> bool
+    val get_profiling_logger: parameter -> Format.formatter 
     val get_logger: parameter -> Format.formatter 
     val set_logger: parameter -> Format.formatter -> parameter
     val get_out_channel: parameter -> Format.formatter
@@ -79,7 +90,11 @@ module type Cflow_handler =
     val use_fusion_sort: parameter -> parameter 
     val always_disambiguate: parameter -> bool 
     val set_always_disambiguate: parameter -> bool -> parameter
-    val do_we_reduce_graph_before_canonicalisation: parameter -> bool  						
+    val init_handler: Environment.t -> handler
+    val string_of_rule_id: handler -> int -> string
+    val string_of_agent_id: handler -> int -> string
+    val get_predicate_map: handler ->  (int * Predicate_maps.predicate_value * bool) list Predicate_maps.QPredicateMap.t
+    val get_is_time_independent: parameter -> bool
   end
 
 
@@ -104,15 +119,15 @@ module Cflow_handler =
 	  kasa : Remanent_parameters_sig.parameters ;
 	  always_disambiguate_initial_states : bool  ;
 	  bound_on_itteration_number: int option ;
-	  reduce_graph_before_canonicalisation: bool ;
+	  time_independent: bool ;
 	}
 
     let build_parameter () =
-      let channel = Kappa_files.open_profiling () in
+      let channel = Kappa_files.open_branch_and_cut_engine_profiling () in
       {
         current_compression_mode = None ;
         priorities_weak = Priority.weak ;
-        priorities_strong = Priority.strong2 ;
+        priorities_strong = Priority.strong ;
         priorities_causal = Priority.causal ;
 	compute_all_stories = false ; 
 	sort_algo_for_stories = Parameter.Bucket;
@@ -124,11 +139,11 @@ module Cflow_handler =
 	debug_mode = false ;
 	log_step = true ;
 	log_step_channel = Format.std_formatter ; 
-	kasa = Remanent_parameters.get_parameters () ;
+	kasa = Remanent_parameters.get_parameters ~called_from:Remanent_parameters_sig.KaSim () ;
 	always_disambiguate_initial_states = true ;
 	bound_on_itteration_number = None ;
-	reduce_graph_before_canonicalisation = true 
-      }
+	time_independent = !Parameter.time_independent ;
+    }
 
     let set_compression_weak p =
       {p with current_compression_mode = Some Parameter.Weak}
@@ -142,11 +157,31 @@ module Cflow_handler =
     type handler =
         {
           env: Environment.t ;
+	  rule_name_cache: string array;
+	  agent_name_cache: string array;
+	  steps_by_column:  (int * Predicate_maps.predicate_value * bool) list Predicate_maps.QPredicateMap.t ;
+    
         }
 
-    type 'a with_handler = parameter -> handler -> Exception.method_handler -> 'a
+    type 'a zeroary = parameter -> handler -> StoryProfiling.StoryStats.log_info -> Exception.method_handler -> Exception.method_handler * StoryProfiling.StoryStats.log_info * 'a
+    type ('a,'b) unary  = parameter -> handler -> StoryProfiling.StoryStats.log_info -> Exception.method_handler -> 'a -> Exception.method_handler * StoryProfiling.StoryStats.log_info * 'b
+    type ('a,'b,'c) binary  = parameter -> handler -> StoryProfiling.StoryStats.log_info -> Exception.method_handler -> 'a -> 'b -> Exception.method_handler * StoryProfiling.StoryStats.log_info * 'c
+    type ('a,'b,'c,'d) ternary  = parameter -> handler -> StoryProfiling.StoryStats.log_info -> Exception.method_handler -> 'a -> 'b -> 'c ->  Exception.method_handler * StoryProfiling.StoryStats.log_info * 'd
+    type ('a,'b,'c,'d,'e) quaternary  = parameter -> handler -> StoryProfiling.StoryStats.log_info -> Exception.method_handler -> 'a -> 'b -> 'c -> 'd -> Exception.method_handler * StoryProfiling.StoryStats.log_info * 'e
+    
+    let init_handler env =
+      let n_rules = Environment.nb_syntactic_rules env in
+      let rule_name_cache = Array.init (n_rules+1) (Format.asprintf "%a" (Environment.print_ast_rule ~env:env)) in
+      let n_agents = Signature.size (Environment.signatures env) in
+      let agent_name_cache = Array.init n_agents (Format.asprintf "%a" (Environment.print_agent ~env:env)) in
+      let steps_by_column = 
+	Predicate_maps.QPredicateMap.empty 0 in 
+      {env = env;
+       rule_name_cache=rule_name_cache;
+       agent_name_cache=agent_name_cache;
+       steps_by_column=steps_by_column 
+    }
 
-   
     let string_of_exn x = Some ""
 
     let get_priorities parameter =
@@ -195,7 +230,11 @@ module Cflow_handler =
    let do_not_bound_itterations parameter = {parameter with bound_on_itteration_number = None}
    let set_itteration_bound parameter int = {parameter with bound_on_itteration_number = Some int}				      
    let get_bound_on_itteration_number parameter = parameter.bound_on_itteration_number
+   let get_profiling_logger parameter = parameter.out_channel_profiling 
+   let string_of_rule_id handler i = handler.rule_name_cache.(i)
+   let string_of_agent_id handler i = handler.agent_name_cache.(i)
 
-   let do_we_reduce_graph_before_canonicalisation parameter = parameter.reduce_graph_before_canonicalisation
-    end:Cflow_handler)
+   let get_predicate_map handler = handler.steps_by_column
+   let get_is_time_independent parameter = parameter.time_independent 
+end:Cflow_handler)
     

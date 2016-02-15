@@ -2,11 +2,11 @@ Parsing create.ka...
 done
 Scan rules!
 Signature:
-Signature:agents: 
+Signature:agents:
 Signature:agents:agent_type:0:A
 Signature:agents:agent_type:1:B
 Signature:agents:agent_type:2:C
-Signature:sites: 
+Signature:sites:
 Signature:sites:agent_type:0:
 Signature:sites:agent_type:1:
 Signature:sites:agent_type:2:
@@ -55,6 +55,7 @@ Quarks:REMOVAL
 Quarks:rule_id:0,agent_type:0
 Quarks:MODIFICATION+
 Quarks:MODIFICATION-
+Quarks:HALF BOND BREAKING
 Quarks:Rule 1
 Quarks:TEST
 Quarks:rule_id:1,agent_type:1
@@ -64,6 +65,7 @@ Quarks:REMOVAL
 Quarks:rule_id:1,agent_type:1
 Quarks:MODIFICATION+
 Quarks:MODIFICATION-
+Quarks:HALF BOND BREAKING
 
 REMARKS: The notation [i] is a position of an agent in a rule/var. If a position is a negative number [-i], then it refers an agent that is connected to the agent at position (i-1) that is modified by side effects.
 Quarks:agent_test**:agent_type:0,rule:0->[0]
@@ -72,13 +74,14 @@ Quarks:agent_modif+:agent_type:1,rule:0->[0]
 Quarks:agent_modif+:agent_type:2,rule:1->[0]
 Quarks:agent_modif-:agent_type:0,rule:0->[0]
 Quarks:agent_modif-:agent_type:1,rule:1->[0]
+Refining the influence map...
 Influence_map: The notation [i -> j] means an agent at position [i] of the first rule/var has an influence to an agent at position [j] of the second rule/var.
 Influence_map:Wake_up_map:rule(0):'r0' A()->B() -> rule(1):'r1' B()->C()[0->0]
-Refining the influence map...
+
 Reachability analysis...
 
-------------------------------------------------------
-Covering classes with type set:
+Reachability analysis static information ....
+
 ============================================================
 * BDU Analysis:
 ============================================================
@@ -88,80 +91,51 @@ Covering classes with type set:
 ------------------------------------------------------------
 Mapping between sites and the covering classes they belong to:
 ------------------------------------------------------------
-------------------------------------------------------------
-Sites that may/must occurs side-effects:
-------------------------------------------------------------
-------------------------------------------------------------
-Set of rules that may modify a given site (excluding created agents):
-------------------------------------------------------------
-------------------------------------------------------------
-Set of rules that may test a given site:
-------------------------------------------------------------
-------------------------------------------------------------
-Set of rules that may test and modify a given site (excluding created agents):
-------------------------------------------------------------
-------------------------------------------------------------
-Set of rules that may modify a given site (excluding created agents, without agent_id):
-------------------------------------------------------------
-------------------------------------------------------------
-Set of rules that may test a given site (without agent_id):
-------------------------------------------------------------
-------------------------------------------------------------
-Set of rules that may test and modify a given site (excluding created agents, without agent_id):
-------------------------------------------------------------
+rule 0: r0
+agent_type:1:B:cv_id:0
+agent_type_Id=1
+agent_type_ Leaf True 
 
-** Dynamic information:
+rule 1: r1
+agent_type:2:C:cv_id:0
+agent_type_Id=1
+agent_type_ Leaf True 
 
-------------------------------------------------------------
-(Syntactic) Contact map (only considering rhs) and initital state:
-------------------------------------------------------------
-Sites are annotated with the id of binding type:
+rule 0: r0
+agent_type:0:A:cv_id:0
+agent_type_Id=1
+agent_type_ Leaf True 
 
-------------------------------------------------------------
-List of rules to awake when the state of a site is modified and tested:
-------------------------------------------------------------
+rule 1: r1
+agent_type:1:B:cv_id:0
+agent_type_Id=1
+agent_type_ Leaf True 
+
+	Initial state is empty
+
+	Wake-up rules
+
+	Applying rule 0: r0:
+		the predcondition is not satisfied yet
+
+	Applying rule 1: r1:
+		the predcondition is not satisfied yet
 
 ------------------------------------------------------------
-* Rules in the working list:
+* Dead rule :
 ------------------------------------------------------------
-
-------------------------------------------------------------
-* Covering classes with new indexes:
-------------------------------------------------------------
-- Working list creation:
-0 1 
-
-------------------------------------------------------------
-- Bdu for the valuations of the views that are tested (per rule, agent and covering class):
-
-
-------------------------------------------------------------
-- Bdu for the valuations of the views that are tested (projection per rule):
-
-
-------------------------------------------------------------
-- Bdu for the valuations of the views that are created (per rule, agent and covering class):
-
-
-------------------------------------------------------------
-- Bdu for the valuations of the views that are created (per rule_id; projection function):
-
-
-------------------------------------------------------------
-- Bdu for the valuations of the views that are created in the initial state (per rule, agent and covering class):
-
-
-------------------------------------------------------------
-- List for update of the views due to modification (per rule, agent and covering class):
-
-------------------------------------------------------------
-- List for update of the views due to modification (projection per rule):
+rule 0: r0 will never be applied.
+rule 1: r1 will never be applied.
 
 ------------------------------------------------------------
 * Fixpoint iteration :
 ------------------------------------------------------------
-** New update function when discovered sites that are bond on the rhs for the first time:
-** Discovered sites that are bond on the rhs for the first time:
-false
-** Fixpoint iteration function:
+
+------------------------------------------------------------
+* Relational properties:
+------------------------------------------------------------
+
+------------------------------------------------------------
+* Non relational properties:
+------------------------------------------------------------
 execution finished without any exception

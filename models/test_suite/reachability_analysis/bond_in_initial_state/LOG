@@ -1,0 +1,127 @@
+Kappa Static Analyzer (DomainBased-628-g7da4236-dirty) (without Tk interface)
+Analysis launched at 2016/01/15 19:01:47 (GMT+1) on applecell.home
+Parsing initial_state.ka...
+done
+Compiling...
+Generating the raw contact map...
+Generating the raw influence map...
+Refining the influence map...
+Reachability analysis...
+	Views in initial state
+
+
+	A(x!B@x)
+
+	A(x~u)
+
+	B(x!A@x,x~u)
+	Wake-up rules
+
+	Dealing with A(x!)
+		(rule 0) should be investigated 
+		(rule 1) should be investigated 
+
+	Dealing with A(x~)
+		(rule 0) should be investigated 
+
+	Dealing with B(x!,x~)
+		(rule 0) should be investigated 
+		(rule 1) should be investigated 
+		(rule 2) should be investigated 
+		(rule 3) should be investigated 
+
+	Applying rule 0:
+		the precondition is satisfied
+
+	Applying rule 2:
+		the predcondition is not satisfied yet
+
+	Applying rule 1:
+		the precondition is satisfied
+
+		Updating the views for A(x!)
+
+				B(x!free,x~u)
+
+				(rule 0) should be investigated 
+				(rule 1) should be investigated 
+				(rule 2) should be investigated 
+				(rule 3) should be investigated 
+
+	Applying rule 3:
+		the precondition is satisfied
+
+		Updating the views for B(x!,x~)
+
+		Updating the views for B(x!,x~)
+
+				B(x!A@x,x~p)
+
+				(rule 0) should be investigated 
+				(rule 1) should be investigated 
+				(rule 2) should be investigated 
+				(rule 3) should be investigated 
+
+	Applying rule 0:
+		the precondition is satisfied
+
+	Applying rule 1:
+		the precondition is satisfied
+
+		Updating the views for A(x!)
+
+				B(x!free,x~p)
+
+				(rule 0) should be investigated 
+				(rule 1) should be investigated 
+				(rule 2) should be investigated 
+				(rule 3) should be investigated 
+
+	Applying rule 2:
+		the precondition is satisfied
+
+		Updating the views for B(x!,x~)
+
+	Applying rule 3:
+		the precondition is satisfied
+
+		Updating the views for B(x!,x~)
+
+		Updating the views for B(x!,x~)
+
+	Applying rule 0:
+		the precondition is satisfied
+
+	Applying rule 1:
+		the precondition is satisfied
+
+		Updating the views for A(x!)
+
+Reachability analysis result ....
+
+------------------------------------------------------------
+* Dead rule :
+------------------------------------------------------------
+
+Reachability analysis result ....
+
+------------------------------------------------------------
+* Cartesian decomposition:
+------------------------------------------------------------
+A(x!B@x)
+A(x~u)
+B(x~p)
+B(x~u)
+B(x!A@x)
+B(x!free)
+
+------------------------------------------------------------
+* Cartesian abstraction:
+------------------------------------------------------------
+A(x!B@x)
+A(x~u)
+B(x!A@x)
+B(x!free)
+B(x~p)
+B(x~u)
+execution finished without any exception

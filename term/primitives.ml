@@ -1,16 +1,21 @@
 module Transformation =
   struct
-    type t =
-      | Agent of Agent_place.t
-      | Freed of Agent_place.t * int
-      | Linked of (Agent_place.t * int) * (Agent_place.t * int)
-      | PositiveInternalized of Agent_place.t * int * int
-      | NegativeInternalized of Agent_place.t * int
+    type 'a t =
+      | Agent of 'a
+      | Freed of 'a Instantiation.site
+      | Linked of 'a Instantiation.site * 'a Instantiation.site
+      | NegativeWhatEver of 'a Instantiation.site
+      | PositiveInternalized of
+	  'a * Instantiation.site_name * Instantiation.internal_state
+      | NegativeInternalized of 'a Instantiation.site
 
     let rename wk id cc inj = function
       | Freed (p,s) as x ->
 	 let p' = Agent_place.rename wk id cc inj p in
 	 if p == p' then x else Freed (p',s)
+      | NegativeWhatEver (p,s) as x ->
+	 let p' = Agent_place.rename wk id cc inj p in
+	 if p == p' then x else NegativeWhatEver (p',s)
       | Linked ((p1,s1),(p2,s2)) as x ->
 	 let p1' = Agent_place.rename wk id cc inj p1 in
 	 let p2' = Agent_place.rename wk id cc inj p2 in
@@ -25,6 +30,19 @@ module Transformation =
 	 let p' = Agent_place.rename wk id cc inj p in
 	 if p == p' then x else Agent p'
 
+    let concretize inj2graph = function
+      | Agent n -> Agent (Agent_place.concretize inj2graph n)
+      | Freed (n,s) -> Freed (Agent_place.concretize inj2graph n,s)
+      | Linked ((n,s),(n',s')) ->
+	 Linked ((Agent_place.concretize inj2graph n,s),
+		 (Agent_place.concretize inj2graph n',s'))
+      | NegativeWhatEver (n,s) ->
+	 NegativeWhatEver (Agent_place.concretize inj2graph n,s)
+      | PositiveInternalized (n,s,i) ->
+	 PositiveInternalized (Agent_place.concretize inj2graph n,s,i)
+      | NegativeInternalized (n,s) ->
+	 NegativeInternalized (Agent_place.concretize inj2graph n,s)
+
     let print ?sigs f = function
       | Agent p ->
 	 Format.fprintf f "@[%a@]" (Agent_place.print ?sigs) p
@@ -32,6 +50,10 @@ module Transformation =
 	 Format.fprintf
 	   f "@[%a.%a = %t@]" (Agent_place.print ?sigs) p
 	   (Agent_place.print_site ?sigs p) s Pp.bottom
+      | NegativeWhatEver (p,s) ->
+	 Format.fprintf
+	   f "@[%a.%a = ???@]" (Agent_place.print ?sigs) p
+	   (Agent_place.print_site ?sigs p) s
       | Linked ((p1,s1),(p2,s2)) ->
 	 Format.fprintf
 	   f "@[%a.%a = %a.%a@]"
@@ -49,11 +71,10 @@ module Transformation =
 
 type elementary_rule = {
   rate : Alg_expr.t;
-  rate_absolute : bool;
-  unary_rate : Alg_expr.t option;
+  unary_rate : (Alg_expr.t * int option) option;
   connected_components : Connected_component.t array;
-  removed : Transformation.t list;
-  inserted : Transformation.t list;
+  removed : Instantiation.abstract Transformation.t list;
+  inserted : Instantiation.abstract Transformation.t list;
   consumed_tokens : (Alg_expr.t * int) list;
   injected_tokens : (Alg_expr.t * int) list;
   syntactic_rule : int;
@@ -82,3 +103,6 @@ type perturbation =
       abort : Alg_expr.t Ast.bool_expr option;
       stopping_time : Nbr.t list
     }
+
+let exists_modification check l =
+  List.exists (fun p -> List.exists check p.effect) l
