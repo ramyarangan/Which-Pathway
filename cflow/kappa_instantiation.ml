@@ -1,40 +1,42 @@
 (**
-  * kappa_instantiation.ml 
+  * kappa_instantiation.ml
   *
-  * Causal flow compression: a module for KaSim 
+  * Causal flow compression: a module for KaSim
   * Jérôme Feret, projet Abstraction, INRIA Paris-Rocquencourt
-  * Jean Krivine, Université Paris-Diderot, CNRS 
-  * 
+  * Jean Krivine, Université Paris-Diderot, CNRS
+  *
   * KaSim
-  * Jean Krivine, Université Paris-Diderot, CNRS 
-  *  
+  * Jean Krivine, Université Paris-Diderot, CNRS
+  *
   * Creation: 29/08/2011
   * Last modification: 02/08/2015
-  * * 
+  * *
   * Some parameters references can be tuned thanks to command-line options
-  * other variables has to be set before compilation   
-  *  
-  * Copyright 2011,2012,2013 Institut National de Recherche en Informatique 
-  * et en Automatique.  All rights reserved.  This file is distributed     
+  * other variables has to be set before compilation
+  *
+  * Copyright 2011,2012,2013 Institut National de Recherche en Informatique
+  * et en Automatique.  All rights reserved.  This file is distributed
   * under the terms of the GNU Library General Public License *)
 
 let debug_mode = false
-let compose_with_handler f g parameter handler error x = 
-  let error,y = g parameter handler error x in 
-  f parameter handler error y 
+let compose_with_handler f g parameter handler error x =
+  let error,y = g parameter handler error x in
+  f parameter handler error y
+
+module P = StoryProfiling.StoryStats
+
 
 module type Cflow_signature =
 sig
   module H:Cflow_handler.Cflow_handler
-  module P:StoryProfiling.StoryStats
 
-  type agent_id = int 
+  type agent_id = int
   module AgentIdSet:SetMap.Set with type elt = agent_id
 
-  type internal_state = int 
+  type internal_state = int
 
   type side_effect = Instantiation.concrete Instantiation.site list
-  type refined_event = Causal.event_kind * Instantiation.concrete Instantiation.event
+  type refined_event = Causal.event_kind * Instantiation.concrete Instantiation.event * unit Mods.simulation_info
   type refined_obs =
       Causal.event_kind * Instantiation.concrete Instantiation.test list * unit Mods.simulation_info
   type refined_step =
@@ -56,16 +58,15 @@ sig
   val agent_name_of_site: Instantiation.concrete Instantiation.site -> Instantiation.agent_name
   val site_name_of_site: Instantiation.concrete Instantiation.site -> Instantiation.site_name
   val build_subs_refined_step: int -> int -> refined_step
-  val tests_of_refined_step: (refined_step -> Exception.method_handler * Instantiation.concrete Instantiation.test list) H.with_handler
+  val tests_of_refined_step: (refined_step, Instantiation.concrete Instantiation.test list) H.unary
   val actions_of_refined_step:
-    (refined_step ->
-     Exception.method_handler *
+    (refined_step,
        (Instantiation.concrete Instantiation.action list *
-	  (Instantiation.concrete Instantiation.site*Instantiation.concrete Instantiation.binding_state) list)) H.with_handler
+	  (Instantiation.concrete Instantiation.site*Instantiation.concrete Instantiation.binding_state) list)) H.unary
   val is_obs_of_refined_step: refined_step -> bool
   val is_init_of_refined_step: refined_step -> bool
   val is_subs_of_refined_step: refined_step -> bool
-  val is_event_of_refined_step: refined_step -> bool
+  val is_event_of_refined_step: refined_step -> bool						  
   val simulation_info_of_refined_step:
     refined_step -> unit Mods.simulation_info option
   val print_side:
@@ -73,7 +74,7 @@ sig
     (Instantiation.concrete Instantiation.site*Instantiation.concrete Instantiation.binding_state) -> unit
 
   val print_refined_step:
-    ?handler:H.handler -> Format.formatter -> refined_step -> unit
+    ?compact:bool -> ?handler:H.handler -> Format.formatter -> refined_step -> unit
 
   val store_event:
     P.log_info -> refined_event -> refined_step list -> P.log_info * refined_step list
@@ -87,15 +88,17 @@ sig
   val side_effect_of_list: Instantiation.concrete Instantiation.site list -> side_effect
 
   val get_kasim_side_effects: refined_step -> side_effect
-
-  val level_of_event: (refined_step -> (agent_id -> bool) -> Exception.method_handler * Priority.level) H.with_handler
+  val get_id_of_refined_step: refined_step -> int option
+  val get_time_of_refined_step: refined_step -> float option
+						
+  val level_of_event: Priority.priorities option -> (refined_step,(agent_id -> bool),Priority.level) H.binary
   val disambiguate: refined_step list -> refined_step list
   val clean_events: refined_step list -> refined_step list
-  val agent_id_in_obs: (refined_step -> Exception.method_handler * AgentIdSet.t) H.with_handler 
+  val agent_id_in_obs: (refined_step, AgentIdSet.t) H.unary
 
   val fill_siphon: refined_step list -> refined_step list
-  val split_init: refined_step list -> refined_step list 
-  val agent_id_in_obs: (refined_step -> Exception.method_handler * AgentIdSet.t) H.with_handler
+  val split_init: refined_step list -> refined_step list
+  val agent_id_in_obs: (refined_step, AgentIdSet.t) H.unary
 end
 
 
@@ -115,10 +118,10 @@ module Cflow_linker =
   module AgentIdSet = Mods.IntSet
   module SiteMap = Mods.IntMap
   module SiteSet = Mods.IntSet
-  type internal_state  = int 
+  type internal_state  = int
 
   type refined_event =
-      Causal.event_kind * PI.concrete PI.event
+      Causal.event_kind * PI.concrete PI.event * unit Mods.simulation_info
   type refined_obs =
       Causal.event_kind *
 	PI.concrete PI.test list *
@@ -132,7 +135,7 @@ module Cflow_linker =
 
   let build_subs_refined_step a b = Subs (a,b)
   let get_kasim_side_effects = function
-    | Event ((_,(_,(_,_,a)))) -> a
+    | Event ((_,(_,(_,_,a)),_)) -> a
     | Subs _ | Obs _ | Dummy _ | Init _ -> []
 
   let dummy_refined_step x = Dummy x
@@ -180,14 +183,14 @@ module Cflow_linker =
     Format.fprintf log "%s(%a,%a)\n" prefix (print_site ~env) s
 		   (print_binding_state ~env) binding_state
 
-  let tests_of_refined_obs _ _ error (_,x,_) = error, x
-  let tests_of_refined_event _ _ error (_,(y,(_,_,_))) =  error,y
-  let tests_of_refined_init _ _ error _ =  error,[]
-  let tests_of_refined_subs _ _ error _ _ = error,[]
-  let actions_of_refined_event _ _ error (_,(_,(x,y,_))) = error,(x,y)
-  let actions_of_refined_init _ _ error y = error,(y,[])
-  let actions_of_refined_obs _ _ error _ = error,([],[])
-  let actions_of_refined_subs _ _ error _ _ = error,([],[])
+  let tests_of_refined_obs _ _ info error (_,x,_) = error, info, x
+  let tests_of_refined_event _ _ info error (_,(y,(_,_,_))) =  error, info, y
+  let tests_of_refined_init _ _ info error _ =  error, info, []
+  let tests_of_refined_subs _ _ info error _ _ = error, info, []
+  let actions_of_refined_event _ _ info error (_,(_,(x,y,_))) = error, info, (x,y)
+  let actions_of_refined_init _ _ info error y = error, info, (y,[])
+  let actions_of_refined_obs _ _ info error _ = error, info, ([],[])
+  let actions_of_refined_subs _ _ info error _ _ = error, info, ([],[])
 
   let print_side_effects ?handler =
     let env = Tools.option_map (fun x -> x.H.env) handler in
@@ -197,10 +200,16 @@ module Cflow_linker =
 	       f "Side_effects(%a:%a)@,"
 	       (print_site ?env) site (print_binding_state ?env) state)
 
-  let print_refined_obs ?handler f (ev_kind,tests,_) =
+  let print_refined_obs ?compact:(compact=false) ?handler f (ev_kind,tests,_) =
     let sigs = match handler with
       | None -> None
       | Some handler -> Some (Environment.signatures handler.H.env) in
+    if compact
+    then
+      Format.fprintf
+	f "OBS %s"
+	(Causal.label ?env:(Tools.option_map (fun x -> x.H.env) handler) ev_kind)
+    else
     Format.fprintf
       f "***@[<1>OBS %s:%a@]***"
       (Causal.label ?env:(Tools.option_map (fun x -> x.H.env) handler) ev_kind)
@@ -208,39 +217,47 @@ module Cflow_linker =
 
   let print_refined_subs _f (_a,_b)  = ()
 
-  let print_refined_init ?handler log actions =
+  let print_refined_init ?compact:(compact=false) ?handler log actions =
     let sigs = match handler with
       | None -> None
       | Some handler -> Some (Environment.signatures handler.H.env) in
-    Format.fprintf log "***@[<1>INIT:%a@]***"
+    if compact
+    then
+      Format.fprintf log "INIT:%a" (Pp.list Pp.space (PI.print_concrete_action ?sigs)) actions
+    else
+      Format.fprintf log "***@[<1>INIT:%a@]***"
 		   (Pp.list Pp.space (PI.print_concrete_action ?sigs)) actions
 
-  let print_refined_event ?handler log (ev_kind,(tests,(actions,side_sites,_))) =
+  let print_refined_event ?compact:(compact=false) ?handler log (ev_kind,(tests,(actions,side_sites,_))) =
     let sigs = match handler with
       | None -> None
       | Some handler -> Some (Environment.signatures handler.H.env) in
-    let () = Format.fprintf log "@[***Refined event:***@,* Kappa_rule %s@,"
-			    (Causal.label ?env:(Tools.option_map (fun x -> x.H.env) handler) ev_kind) in
-    Format.fprintf log "Story encoding:@[<1>@,%a%a%a@]@,***@]"
-		   (Pp.list ~trailing:Pp.space Pp.space (PI.print_concrete_test ?sigs))
-		   tests
-		   (Pp.list ~trailing:Pp.space Pp.space (PI.print_concrete_action ?sigs))
-		   actions
-		   (print_side_effects ?handler) side_sites
+    if compact
+    then
+      Format.fprintf log "%s" (Causal.label ?env:(Tools.option_map (fun x -> x.H.env) handler) ev_kind)
+    else
+      let () = Format.fprintf log "@[***Refined event:***@,* Kappa_rule %s@,"
+	(Causal.label ?env:(Tools.option_map (fun x -> x.H.env) handler) ev_kind) in
+      Format.fprintf log "Story encoding:@[<1>@,%a%a%a@]@,***@]"
+	(Pp.list ~trailing:Pp.space Pp.space (PI.print_concrete_test ?sigs))
+	tests
+	(Pp.list ~trailing:Pp.space Pp.space (PI.print_concrete_action ?sigs))
+	actions
+	(print_side_effects ?handler) side_sites
 
-  let gen f0 f1 f2 f3 f4 (p:H.parameter) h e step =
+  let gen f0 f1 f2 f3 f4 (p:H.parameter) h l e step =
     match step with
-    | Subs (a,b) -> f0 p h e a b
-    | Event (x,y) -> f1 p h e (x,y)
-    | Init a -> f2 p h e a
-    | Obs a -> f3 p h e a
-    | Dummy x  -> f4 p h e x
+    | Subs (a,b) -> f0 p h l e a b
+    | Event (x,y,_) -> f1 p h l e (x,y)
+    | Init a -> f2 p h l e a
+    | Obs a -> f3 p h l e a
+    | Dummy x  -> f4 p h l e x
 
-  let print_refined_step ?handler f = function
+  let print_refined_step ?compact:(compact=false) ?handler f = function
     | Subs (a,b) -> print_refined_subs f (a,b)
-    | Event (x,y) -> print_refined_event ?handler f (x,y)
-    | Init a -> print_refined_init ?handler f a
-    | Obs a -> print_refined_obs ?handler f a
+    | Event (x,y,z) -> print_refined_event ~compact ?handler f (x,y)
+    | Init a -> print_refined_init ~compact ?handler f a
+    | Obs a -> print_refined_obs ~compact ?handler f a
     | Dummy _  -> ()
 
   let tests_of_refined_step =
@@ -249,7 +266,7 @@ module Cflow_linker =
       tests_of_refined_event
       tests_of_refined_init
       tests_of_refined_obs
-      (fun _ _ error _ -> error,[])
+      (fun _ _ l error _ -> error, l, ([]:Instantiation.concrete Instantiation.test list))
 
   let is_obs_of_refined_step x =
     match x with
@@ -268,10 +285,23 @@ module Cflow_linker =
     | Event _ -> true
     | Init _ | Subs _ | Dummy _ | Obs _ -> false
 
+  let dummy = {Mods.story_id = 0 ; Mods.story_time = 0. ; Mods.story_event = 0 ; Mods.profiling_info = () }
   let simulation_info_of_refined_step x =
     match x with
-    | Obs (_,_,info) -> Some info
-    | Event _ | Subs _ | Dummy _ | Init _ -> None
+    | Obs (_,_,info) | Event (_,_,info) -> Some info
+    | Init _ -> Some dummy 
+    | Subs _ | Dummy _ -> None
+
+			    
+  let get_gen_of_refined_step f x =
+    match
+      simulation_info_of_refined_step x
+    with
+    | None -> None
+    | Some a -> Some (f a)
+		  
+  let get_time_of_refined_step x = get_gen_of_refined_step (fun x -> x.Mods.story_time) x
+  let get_id_of_refined_step x = get_gen_of_refined_step (fun x -> x.Mods.story_event) x
 
   let actions_of_refined_step =
     gen
@@ -279,14 +309,14 @@ module Cflow_linker =
       actions_of_refined_event
       actions_of_refined_init
       actions_of_refined_obs
-      (fun _ _ error _ -> error,([],[]))
+      (fun _ _ l error _ -> error,l,([],[]))
   let store_event log_info (event:refined_event) (step_list:refined_step list) =
     match event with
-    | Causal.INIT _,(_,(actions,_,_)) ->
+    | Causal.INIT _,(_,(actions,_,_)),_ ->
        P.inc_n_kasim_events log_info,(Init actions)::step_list
-    | Causal.OBS _,_ -> assert false
-    | (Causal.RULE _ | Causal.PERT _ as k),x ->
-       P.inc_n_kasim_events log_info,(Event (k,x))::step_list
+    | Causal.OBS _,_,_ -> assert false
+    | (Causal.RULE _ | Causal.PERT _ as k),x,info ->
+       P.inc_n_kasim_events log_info,(Event (k,x,info))::step_list
   let store_obs log_info (i,x,c) step_list =
     P.inc_n_obs_events log_info,Obs(i,x,c)::step_list
 
@@ -297,7 +327,7 @@ module Cflow_linker =
 	     | PI.Mod_internal _ | PI.Bind _ | PI.Bind_to _ | PI.Free _
 	     | PI.Remove _ -> l) [] actions
   let creation_of_event = function
-    | (Event (_,(_,(ac,_,_))) | Init ac) -> creation_of_actions fst ac
+    | (Event (_,(_,(ac,_,_)),_) | Init ac) -> creation_of_actions fst ac
     | Obs _ | Dummy _ | Subs _ -> []
 
   let build_grid list bool handler =
@@ -312,12 +342,12 @@ module Cflow_linker =
 	   else fun _ -> List.rev_append side_effect side in
 	 let translate y = Mods.IntMap.find_default y y subs in
          match (k:refined_step) with
-         | Event (id,event) ->
+         | Event (id,event,info) ->
 	    let (tests,(actions,side_effects,kappa_side)) =
 	      PI.subst_map_agent_in_concrete_event translate event in
             let kasim_side_effect = maybe_side_effect kappa_side in
             Causal.record
-	      (id,(tests,(actions,side_effects,kasim_side_effect)))
+	      (id,(tests,(actions,side_effects,kasim_side_effect)),info)
 	      counter env grid,
             empty_set,counter+1,Mods.IntMap.empty
          | Obs (id,tests,info) ->
@@ -350,16 +380,16 @@ module Cflow_linker =
     Pp.list Pp.comma (fun f ((a,_),b) -> Format.fprintf f "(%i,%i)," a b)
   let side_effect_of_list l = l
 
-  let level_of_event parameter handler error e set =
-    match H.get_priorities parameter with
-    | None -> error,0
-    | Some priorities ->
+  let level_of_event priority_opt parameter handler log_info error e set =
+    match priority_opt,H.get_priorities parameter with
+    | None,None -> error,log_info,Priority.highest
+    | Some priorities,_ | None,Some priorities ->
        match e with
-       | Obs _ -> error,priorities.Priority.other_events
+       | Obs _ -> error,log_info,priorities.Priority.other_events
        | Event _ ->
           begin
-            let error,actions =
-	      actions_of_refined_step parameter handler error e in
+            let error,log_info,actions =
+	      actions_of_refined_step parameter handler log_info error e in
             let priority =
               List.fold_left
                 (fun priority ->
@@ -379,18 +409,20 @@ module Cflow_linker =
                 priorities.Priority.other_events
                 (fst (actions))
             in
-            error,priority
+            error,log_info,priority
           end
        | (Dummy _ | Subs _ | Init _) ->
-	  error,priorities.Priority.substitution
+	  error,log_info,priorities.Priority.substitution
 
-  let subs_agent_in_event mapping = function
-    | Event (a,event) ->
+  let subs_agent_in_event mapping mapping' = function
+    | Event (a,event,info) ->
        Event
 	 (a,
-	  PI.subst_map_agent_in_concrete_event
+	  PI.subst_map2_agent_in_concrete_event
 	    (fun x -> AgentIdMap.find_default x x mapping)
-	    event)
+	    (fun x -> AgentIdMap.find_default x x mapping')
+	    event,
+	 info)
     | Obs (a,b,c) ->
        Obs(a,
 	   Tools.list_smart_map
@@ -401,14 +433,14 @@ module Cflow_linker =
        Init
 	 (Tools.list_smart_map
 	    (PI.subst_map_agent_in_concrete_action
-	       (fun x -> AgentIdMap.find_default x x mapping)) b)
+	       (fun x -> AgentIdMap.find_default x x mapping')) b)
     | Dummy _ | Subs _ as event -> event
 
   let disambiguate event_list =
     let _,_,_,event_list_rev =
       List.fold_left
         (fun (max_id,used,mapping,event_list) event ->
-         let max_id,used,mapping =
+         let max_id,used,mapping' =
            List.fold_left
              (fun (max_id,used,mapping) x ->
               if AgentIdSet.mem x used
@@ -417,18 +449,18 @@ module Cflow_linker =
 		 AgentIdMap.add x (max_id+1) mapping)
               else (max x max_id,AgentIdSet.add x used,mapping))
              (max_id,used,mapping) (creation_of_event event) in
-         let list = (subs_agent_in_event mapping event)::event_list in
-         max_id,used,mapping,list)
+         let list = (subs_agent_in_event mapping mapping' event)::event_list in
+         max_id,used,mapping',list)
         (0,AgentIdSet.empty,AgentIdMap.empty,[])
         event_list
     in List.rev event_list_rev
 
-  type agent_info = 
+  type agent_info =
     {
       initial_step: refined_step ;
       internal_states: internal_state SiteMap.t ;
       bound_sites: SiteSet.t ;
-      sites_with_wrong_internal_state: SiteSet.t 
+      sites_with_wrong_internal_state: SiteSet.t
     }
 
   let convert_init remanent step_list action_list =
@@ -471,13 +503,13 @@ module Cflow_linker =
 	 else aux recur (this::acc) soup' t
     in aux remanent step_list action_list action_list
 
-  let as_init agent_info = 
-    SiteSet.is_empty agent_info.bound_sites 
-      && SiteSet.is_empty agent_info.sites_with_wrong_internal_state 
+  let as_init agent_info =
+    SiteSet.is_empty agent_info.bound_sites
+      && SiteSet.is_empty agent_info.sites_with_wrong_internal_state
 
-  let mod_site site state (remanent,set) = 
-    let agid = agent_id_of_site site in 
-    let s_name = site_name_of_site site in 
+  let mod_site site state (remanent,set) =
+    let agid = agent_id_of_site site in
+    let s_name = site_name_of_site site in
     match AgentIdMap.find_option agid remanent with
     | None -> remanent,set
     | Some ag_info ->
@@ -485,109 +517,109 @@ module Cflow_linker =
        | None -> remanent,set
        | Some state_ref ->
 	  if state_ref = state
-      then 
+      then
 	begin
-	  if SiteSet.mem s_name ag_info.sites_with_wrong_internal_state 
-	  then 
-	    let ag_info = 
-	      { 
-		ag_info with 
-		  sites_with_wrong_internal_state = 
+	  if SiteSet.mem s_name ag_info.sites_with_wrong_internal_state
+	  then
+	    let ag_info =
+	      {
+		ag_info with
+		  sites_with_wrong_internal_state =
 		  SiteSet.remove s_name ag_info.sites_with_wrong_internal_state}
-	    in 
-	    let remanent = AgentIdMap.add agid ag_info remanent in 
+	    in
+	    let remanent = AgentIdMap.add agid ag_info remanent in
 	    begin
-	      if as_init ag_info 
-	      then 
+	      if as_init ag_info
+	      then
 		remanent,
 		AgentIdSet.add agid set
-	      else 
-		remanent, 
+	      else
+		remanent,
 		set
-	    end 
-	  else remanent,set 
-	end 
-      else 
+	    end
+	  else remanent,set
+	end
+      else
 	begin
-	  if SiteSet.mem s_name ag_info.sites_with_wrong_internal_state 
+	  if SiteSet.mem s_name ag_info.sites_with_wrong_internal_state
 	  then
-	    remanent,set 
-	  else 
-	    let ag_info = 
-	      { 
-		ag_info with 
-		  sites_with_wrong_internal_state = 
+	    remanent,set
+	  else
+	    let ag_info =
+	      {
+		ag_info with
+		  sites_with_wrong_internal_state =
 		  SiteSet.add s_name ag_info.sites_with_wrong_internal_state}
-	    in 
-	    let remanent = AgentIdMap.add agid ag_info remanent in 
+	    in
+	    let remanent = AgentIdMap.add agid ag_info remanent in
 	    begin
-	      if as_init ag_info 
-	      then 
-		remanent,set 
-	      else 
-		remanent, 
+	      if as_init ag_info
+	      then
+		remanent,set
+	      else
+		remanent,
 		AgentIdSet.remove agid set
-	    end 
+	    end
 	end
 	
-  let unbind_side (agid,s_name) (remanent,set) = 
+  let unbind_side (agid,s_name) (remanent,set) =
     match AgentIdMap.find_option agid remanent with
     | None -> remanent,set
     | Some ag_info ->
-	if SiteSet.mem s_name ag_info.bound_sites 
-	then 
-	  let ag_info = 
-	    { 
-	      ag_info with 
-		bound_sites = 
+	if SiteSet.mem s_name ag_info.bound_sites
+	then
+	  let ag_info =
+	    {
+	      ag_info with
+		bound_sites =
 		SiteSet.remove s_name ag_info.bound_sites}
-	  in 
-	  let remanent = AgentIdMap.add agid ag_info remanent in 
+	  in
+	  let remanent = AgentIdMap.add agid ag_info remanent in
 	  begin
-	    if as_init ag_info 
-	    then 
+	    if as_init ag_info
+	    then
 	      remanent,
 		AgentIdSet.add agid set
-	    else 
-	      remanent, 
+	    else
+	      remanent,
 	      set
-	  end 
-	else remanent,set 
+	  end
+	else remanent,set
 
 
-  let unbind site rem  = 
-    let agid = agent_id_of_site site in 
-    let s_name = site_name_of_site site in 
-     unbind_side (agid,s_name) rem 
+  let unbind site rem  =
+    let agid = agent_id_of_site site in
+    let s_name = site_name_of_site site in
+     unbind_side (agid,s_name) rem
 
-  let bind site (remanent,set) = 
-    let agid = agent_id_of_site site in 
-    let s_name = site_name_of_site site in 
+  let bind site (remanent,set) =
+    let agid = agent_id_of_site site in
+    let s_name = site_name_of_site site in
     match AgentIdMap.find_option agid remanent with
     | None -> remanent,set
     | Some ag_info ->
        if SiteSet.mem s_name ag_info.bound_sites
        then
-	 remanent,set 
-       else 
-	 let ag_info = 
-	   { 
-	     ag_info with 
-	     bound_sites = 
+	 remanent,set
+       else
+	 let ag_info =
+	   {
+	     ag_info with
+	     bound_sites =
 	       SiteSet.add s_name ag_info.bound_sites}
-	 in 
-	 let remanent = AgentIdMap.add agid ag_info remanent in 
+	 in
+	 let remanent = AgentIdMap.add agid ag_info remanent in
 	 begin
-	   if as_init ag_info 
-	   then 
-	     remanent,set 
-	   else 
-	     remanent, 
+	   if as_init ag_info
+	   then
+	     remanent,set
+	   else
+	     remanent,
 	     AgentIdSet.remove agid set
-	 end 
+	 end
 
   let split_init refined_step_list =
-    let remanent = AgentIdMap.empty in 
+    let remanent = AgentIdMap.empty in
     fst (List.fold_left
       (fun (step_list,remanent) refined_step ->
        match refined_step
@@ -598,13 +630,13 @@ module Cflow_linker =
       (List.rev refined_step_list))
 
   let fill_siphon refined_step_list =
-    let remanent = AgentIdMap.empty in 
+    let remanent = AgentIdMap.empty in
     let a,_ =
       List.fold_left
-	(fun (step_list,remanent) refined_step -> 
+	(fun (step_list,remanent) refined_step ->
 	 match refined_step with
 	 | Init init -> convert_init remanent step_list init
-	 | Event (_,(_,(action,_,kasim_side))) ->
+	 | Event (_,(_,(action,_,kasim_side)),_) ->
 	    let remanent,set =
 	      List.fold_left
 		(fun recur ->
@@ -632,10 +664,10 @@ module Cflow_linker =
 	refined_step_list in
     List.rev a
 
-  let agent_id_in_obs _parameter _handler error = function
-    | Subs _ | Event _ | Init _ | Dummy _ -> error,AgentIdSet.empty
+  let agent_id_in_obs _parameter _handler info error = function
+    | Subs _ | Event _ | Init _ | Dummy _ -> error,info,AgentIdSet.empty
     | Obs (_,tests,_) ->
-       error,
+       error, info,
        List.fold_left
          (fun l x ->
           match x with

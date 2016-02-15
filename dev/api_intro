@@ -1,19 +1,44 @@
 {!indexlist}
 
+The main entry point of KaSim executable is main/KaSim.ml but let's
+describe the API bottom-up.
+
 The folder dataStructures/ has a transparent name. You can find there:
-{!modules: SetMap Nbr NamedDecls Location}
+{!modules: LargeArray SetMap Operator Nbr NamedDecls Location}
+Some pretty printing utilities are here too:
+{!modules: Pp Pp_svg Pp_html}
+Including the KaSa machinery:
+{!modules: Loggers}
+
 
 In term/ directory stands all definitions the simulator works on.
-{!modules: Operator Agent_place Signature Connected_component Instantiation
-Alg_expr Raw_mixture Primitives Environment Kappa_printer }
+{!modules: Agent_place Signature Connected_component
+Instantiation Alg_expr Raw_mixture Primitives Environment Kappa_printer }
 
 In grammar/ are the parser and the compilers
 {!modules:LKappa Expr Snip}
 
-{!modules: Edges}
+The module to store and manipulate the state of the simulation are in
+siteGraph/
+{!modules: Edges Navigation}
 
-Finally, the simulation engine is in simulation/
+The simulation engine is in simulation/
 The core of the interpreter
 {!modules: Expr_interpreter Rule_interpreter State_interpreter}
-and some storage and rendering
-{!modules: Counter Plot Outputs}
+and some storage
+{!modules: Counter Data}
+
+The machinary to cook stories from an execution trace is in cflow/
+{!modules: Compression_main Utilities Priority}
+
+The code specific to the command line backend is in main/. It consists in file handler and renderers
+{!modules: Outputs Kappa_files}
+
+The code of the static analyser is in KaSa_rep/reachability_analysis/
+{!modules: Analyzer Analyzer_headers Composite_domain Analyzer_domain_sig Product}
+Several abstract domains are available:
+{!modules: Global_domain Rules_domain Agents_domain Views_domain}
+
+
+The library to deal with multi-valued decision diagrams is in KaSa_rep/data_structures/mvbdu/
+{!modules: Mvbdu_wrapper}

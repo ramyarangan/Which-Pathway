@@ -13,8 +13,8 @@ val connected_components_sum_of_ambiguous_rule :
   (string list * (string * string) list) Export_to_KaSim.String2Map.t ->
   Connected_component.Env.t -> ?origin:Operator.rev_dep ->
   LKappa.rule_mixture -> Raw_mixture.t ->
-  (Connected_component.Env.t * Operator.rev_dep option) *
-    (Operator.rev_dep option * Connected_component.t array *
-       (Instantiation.abstract Instantiation.event) *
-	 (Primitives.Transformation.t list * Primitives.Transformation.t list))
-      list
+  (Operator.rev_dep option * Connected_component.t array *
+     (Instantiation.abstract Instantiation.event) *
+       (Instantiation.abstract Primitives.Transformation.t list *
+	  Instantiation.abstract Primitives.Transformation.t list))
+    list *   (Connected_component.Env.t * Operator.rev_dep option)

@@ -8,7 +8,7 @@ type internal_state  = int
 type binding_type = agent_name * site_name
 
 type abstract = Agent_place.t
-type concrete = int (*agent_id*) * agent_name
+type concrete = Edges.agent
 
 type 'a site = 'a * site_name
 
@@ -52,9 +52,15 @@ val rename_abstract_side_effect:
   Connected_component.work -> int -> Connected_component.cc -> Renaming.t ->
   (Agent_place.t * 'a) * Agent_place.t binding_state ->
   (Agent_place.t * 'a) * Agent_place.t binding_state
-val concretize_test : (Agent_place.t -> int) -> abstract test -> concrete test
-val concretize_action : (Agent_place.t -> int) -> abstract action -> concrete action
-val concretize_event : (Agent_place.t -> int) -> abstract event -> concrete event
+val concretize_test :
+  (Connected_component.Matching.t * int Mods.IntMap.t) ->
+  abstract test -> concrete test
+val concretize_action :
+  (Connected_component.Matching.t * int Mods.IntMap.t) ->
+  abstract action -> concrete action
+val concretize_event :
+  (Connected_component.Matching.t * int Mods.IntMap.t) ->
+  abstract event -> concrete event
 
 val subst_map_agent_in_concrete_test :
   (int -> int) -> concrete test -> concrete test
@@ -72,6 +78,8 @@ val subst_agent_in_concrete_side_effect:
   (concrete site * concrete binding_state)
 val subst_map_agent_in_concrete_event:
   (int -> int) -> concrete event -> concrete event
+val subst_map2_agent_in_concrete_event:
+  (int -> int) -> (int -> int) -> concrete event -> concrete event
 val subst_agent_in_concrete_event:
   int -> int -> concrete event -> concrete event
 

@@ -16,19 +16,6 @@ let pow64 x n =
   in
   aux x n Int64.one
 
-(*number of bits used to represent n in base 2*)
-let bit_rep_size n = 
-	let rec aux p acc = 
-		if p = 0 then acc
-		else
-			let p' = p/2 in
-			aux p' (acc+1)
-	in
-		aux n 0  
-
-let replace_space str =
-  String.map (fun c -> if c=' ' then '_' else c) str
-
 let read_input () =
 	let rec parse acc input =
 		match Stream.next input with
@@ -90,17 +77,20 @@ let rec list_map_flatten f = function (* list_bind *)
     (List.fold_left (fun x y -> List.rev_append y x) [] (List.rev_map f l))
  *)
 
-let rec list_fold_right_map f x = function
-  | [] -> (x,[])
+let rec list_fold_right_map f l x =
+  match l with
+  | [] -> ([],x)
   | h :: t ->
-     let (x',t') = list_fold_right_map f x t in
-     let (x'', h') = f x' h in (x'', h'::t')
+     let (t',x') = list_fold_right_map f t x in
+     let (h',x'') = f h x' in ( h'::t',x'')
 
 let rec list_fold_left2 f x l1 l2 =
   match l1, l2 with
   | [], [] -> x
   | [], _ :: _ | _ :: _, [] -> raise (Invalid_argument "list_fold_left2")
   | h1::t1, h2::t2 -> list_fold_left2 f (f x h1 h2) t1 t2
+
+let list_random l = List.nth l (Random.int (List.length l))
 
 let array_fold_left_mapi f x a =
   let y = ref x in
@@ -160,3 +150,16 @@ let recti f x i =
   let rec aux j =
     if j < i then f j (aux (succ j)) else x
   in aux 0
+
+let gen_level_not_zero (keya,dataa) (keyb,datab) =
+  if keya = 0
+  then
+    keyb,datab
+  else if keyb = 0
+  then keya,dataa
+  else if compare keya keyb < 0
+  then keya,dataa
+  else keyb,datab
+
+let min_pos_int_not_zero a b = gen_level_not_zero a b
+let max_pos_int_not_zero a b = gen_level_not_zero b a

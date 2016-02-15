@@ -1,4 +1,4 @@
-+ Command line is: 'KaSim' '-i' 'link_swapping_strong1.ka' '-seed' '924556145' '-e' '300' '-d' 'output'
++ Command line is: 'KaSim' '-i' 'link_swapping_strong1.ka' '-seed' '924556145' '-e' '300' '-d' 'output' '--time-independent'
 Parsing link_swapping_strong1.ka...
 done
 + Initialized random number generator with seed 924556145
@@ -11,8 +11,8 @@ done
 + Compute the contact map
 	 -variable declarations
 	 -rules
-	 -observables
 	 -perturbations
+	 -observables
 	 -initial conditions
 	 Done
 ____________________________________________________________
@@ -26,17 +26,6 @@ ____________________________________________________________
 	 - detecting pseudo inverse events (no change)
 	 - blackboard generation
 	 - computing causal past of each observed events (46)
-
-____________________________________________________________
-############################################################
-
-Stats:
- number of step   : 342
- longest story    : 296
- average length   : 159.108695652
- geometric mean   : 179.991243748
-
-	 - causal flow compression (46)
 
 ____________________________________________________________
 ############################################################

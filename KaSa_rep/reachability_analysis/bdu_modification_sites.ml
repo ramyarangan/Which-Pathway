@@ -19,7 +19,7 @@ open Covering_classes_type
 open Covering_classes
 
 let warn parameters mh message exn default =
-  Exception.warn parameters mh (Some "BDU modification sites") message exn (fun () -> default)
+  Exception.warn parameters mh (Some "BDU syntactic") message exn (fun () -> default)
 
 let trace = false
 
@@ -42,15 +42,22 @@ let trace = false
 let collect_modification_sites parameter error rule_id diff_direct store_result =
   (*from a pair of Map (agent_id, agent_type, site) -> rule_id :: old_result)*)
   let add_link error (agent_id, agent_type, site_type) rule_id store_result =
-    let l, old =
-      Int2Map_Modif.Map.find_default
-	([], Site_map_and_set.Set.empty) (agent_id, agent_type, site_type) store_result in
-    let error',current_set =
-      Site_map_and_set.Set.add parameter error rule_id old
+    let error, (l, old) =
+      match Int2Map_Modif.Map.find_option_without_logs parameter error
+        (agent_id, agent_type, site_type) store_result
+      with
+      | error, None -> error, ([], Site_map_and_set.Set.empty)
+      | error, Some (l, s) -> error, (l, s)
     in
-    let error = Exception.check warn parameter error error' (Some "line 51") Exit in 
-    error,
-    Int2Map_Modif.Map.add (agent_id, agent_type, site_type) (l, current_set) store_result
+    let error', current_set = Site_map_and_set.Set.add parameter error rule_id 
+      Site_map_and_set.Set.empty 
+    in
+    let error = Exception.check warn parameter error error' (Some "line 65") Exit in
+    let error, result =
+      Int2Map_Modif.Map.add_or_overwrite parameter error (agent_id, agent_type, site_type) 
+        (l, current_set) store_result
+    in
+    error, result
   in
   let error, store_result =
     AgentMap.fold parameter error
@@ -79,28 +86,18 @@ let collect_modification_sites parameter error rule_id diff_direct store_result 
 
 (*update of the views due to modification without agent_id*)
 
-let collect_modif_map parameter error store_modification_sites store_result =
-  let add_link (agent_type, site_type) set_rule_id store_result =
-    let (l, old) =
-      Int2Map_Test_Modif.Map.find_default
-        ([], Site_map_and_set.Set.empty) (agent_type, site_type) store_result
-    in
-    let error',new_set =
-      Site_map_and_set.Set.union parameter error set_rule_id old
-    in
-    let error = Exception.check warn parameter error error' (Some "line 51") Exit in   
-    let result =
-      Int2Map_Test_Modif.Map.add (agent_type, site_type) (l, new_set) store_result
-    in
-    error, result
-  in
-  Int2Map_Modif.Map.fold
-    (fun (agent_id, agent_type, site_type) (l1, s1) (error, store_result) ->
-      let error, store_result =
-        add_link (agent_type, site_type) s1 store_result
-      in
-      error, store_result
-    ) store_modification_sites (error, store_result)
+let collect_modif_map parameter error store_modification_sites =
+  Project2_modif.monadic_proj
+    (fun parameter error (agent_id, agent_type, site_type) ->
+      error, (agent_type, site_type))
+    parameter
+    error
+    ([], Site_map_and_set.Set.empty)
+    (fun parameter error (l1, s1) (l2, s2) ->
+      let error', new_set = Site_map_and_set.Set.union parameter error s1 s2 in
+      let error = Exception.check warn parameter error error' (Some "line 118") Exit in
+      error, (List.concat [l1; l2], new_set)
+    ) store_modification_sites
 
 (************************************************************************************)
 (*collect a set of rule_id of test rule and modification *)
@@ -108,13 +105,20 @@ let collect_modif_map parameter error store_modification_sites store_result =
 let collect_test_sites parameter error rule_id viewslhs 
     store_result =
   let add_link (agent_id, agent_type, site_type) rule_id store_result =
-    let (l, old) =
-      Int2Map_Modif.Map.find_default ([], Site_map_and_set.Set.empty)
-        (agent_id, agent_type, site_type) store_result in
-    let error',new_set = Site_map_and_set.Set.add parameter error rule_id old in
-    let error = Exception.check warn parameter error error' (Some "line 115") Exit in    
-    let result =
-      Int2Map_Modif.Map.add (agent_id, agent_type, site_type) (l, new_set) store_result
+    let error, (l, old) =
+      match Int2Map_Modif.Map.find_option_without_logs parameter error
+        (agent_id, agent_type, site_type) store_result
+      with
+      | error, None -> error, ([], Site_map_and_set.Set.empty)
+      | error, Some (l, s) -> error, (l, s)
+    in
+    let error', current_set =
+      Site_map_and_set.Set.add parameter error rule_id Site_map_and_set.Set.empty
+    in
+    let error = Exception.check warn parameter error error' (Some "line 137") Exit in
+    let error, result =
+      Int2Map_Modif.Map.add_or_overwrite parameter error (agent_id, agent_type, site_type)
+        (l, current_set) store_result
     in
     error, result
   in
@@ -145,28 +149,18 @@ let collect_test_sites parameter error rule_id viewslhs
 
 (*valuations of the views that are created without agent_id*)
 
-let collect_test_map parameter error store_test_sites store_result =
-  let add_link (agent_type, site_type) set_rule_id store_result =
-    let (l, old) =
-      Int2Map_Test_Modif.Map.find_default
-        ([], Site_map_and_set.Set.empty) (agent_type, site_type) store_result
-    in
-    let error',new_set =
-      Site_map_and_set.Set.union parameter error set_rule_id old
-    in
-    let error = Exception.check warn parameter error error' (Some "line 156") Exit in    
-    let result =
-      Int2Map_Test_Modif.Map.add (agent_type, site_type) (l, new_set) store_result
-    in
-    error, result
-  in
-  Int2Map_Modif.Map.fold
-    (fun (agent_id, agent_type, site_type) (l1, s1) (error, store_result) ->
-      let error, store_result =
-        add_link (agent_type, site_type) s1 store_result
-      in
-      error, store_result
-    ) store_test_sites (error, store_result)
+let collect_test_map parameter error store_test_sites =
+  Project2_modif.monadic_proj
+    (fun parameter error (agent_id, agent_type, site_type) ->
+      error, (agent_type, site_type))
+    parameter
+    error
+    ([], Site_map_and_set.Set.empty)
+    (fun parameter error (l1, s1) (l2, s2) ->
+      let error', new_set = Site_map_and_set.Set.union parameter error s1 s2 in
+      let error = Exception.check warn parameter error error' (Some "line 118") Exit in
+      error, (List.concat [l1; l2], new_set)
+    ) store_test_sites
 
 (************************************************************************************)
 (*TODO: modification and test rule that has rule_id union together.
@@ -179,19 +173,21 @@ test: agent_type:0:site_type:0:[4;5;6;7]
 let collect_test_modification_sites
     parameter error store_modification_map store_test_map store_result =
   let add_link error (agent_id, agent_type, site_type) rule_id_set store_result =
-    let (l, old) =
-      Int2Map_Modif.Map.find_default
-	([], Site_map_and_set.Set.empty) (agent_id, agent_type, site_type) store_result in
-    let result =
-      Int2Map_Modif.Map.add (agent_id, agent_type, site_type) (l, rule_id_set) store_result
+    let error, (l, old) =
+      match Int2Map_Modif.Map.find_option_without_logs parameter error 
+        (agent_id, agent_type, site_type) store_result
+      with
+      | error, None -> error, ([], Site_map_and_set.Set.empty)
+      | error, Some (l, s) -> error, (l, s)
+    in
+    let error, union = Site_map_and_set.Set.union parameter error old rule_id_set in
+    let error, result =
+      Int2Map_Modif.Map.add_or_overwrite parameter error (agent_id, agent_type, site_type)
+        (l, union) store_result
     in
     error, result
-  in  
-  Int2Map_Modif.Map.fold2_with_logs
-    (fun parameter error str str_opt exn ->
-      let error, _ = warn parameter error str_opt exn Not_found in
-      error
-    )
+  in
+  Int2Map_Modif.Map.fold2
     parameter error
     (*exists in 'a t*)
     (fun parameter error (agent_id, agent_type, site_type) (l1, s1) store_result ->
@@ -219,43 +215,38 @@ let collect_test_modification_sites
 
 (*valuations of the views that are created without agent_id*)
 
-let collect_test_modif_map parameter error store_test_modification_sites store_result =
-  let add_link (agent_type, site_type) set_rule_id store_result =
-    let (l, old) =
-      Int2Map_Test_Modif.Map.find_default
-        ([], Site_map_and_set.Set.empty) (agent_type, site_type) store_result
-    in
-    let error',new_set =
-      Site_map_and_set.Set.union parameter error set_rule_id old
-    in
-    let error = Exception.check warn parameter error error' (Some "line 230") Exit in   
-    let result =
-      Int2Map_Test_Modif.Map.add (agent_type, site_type) (l, new_set) store_result
-    in
-    error, result
-  in
-  Int2Map_Modif.Map.fold
-    (fun (agent_id, agent_type, site_type) (l1, s1) (error, store_result) ->
-      let error, store_result =
-        add_link (agent_type, site_type) s1 store_result
-      in
-      error, store_result
-    ) store_test_modification_sites (error, store_result)
-
+let collect_test_modif_map parameter error store_test_modification_sites =
+  Project2_modif.monadic_proj
+    (fun parameter error (agent_id, agent_type, site_type) ->
+      error, (agent_type, site_type)
+    )
+    parameter error
+    ([], Site_map_and_set.Set.empty)
+    (fun parameter error (l1, s1) (l2, s2) ->
+      let error', new_set = Site_map_and_set.Set.union parameter error s1 s2 in
+      let error = Exception.check warn parameter error error' (Some "line 118") Exit in
+      error, (List.concat [l1; l2], new_set)
+    )
+    store_test_modification_sites
 
 (************************************************************************************)
 (*a pair (agent_type_cv, site_cv) in covering classes
   return a list of covering_classes_id*)
 
-let site_covering_classes parameter error covering_classes (*store_result*) =
+let site_covering_classes parameter error covering_classes =
   let add_link (agent_type, site_type) cv_id store_result =
-    let (l, old) =
-      Int2Map_CV.Map.find_default ([],[]) (agent_type, site_type) store_result in
-    (*add the fresh signature into the old result and store them*)
-    let result =
-      Int2Map_CV.Map.add
+    let error, (l, old) =
+      match Int2Map_CV.Map.find_option_without_logs parameter error
+        (agent_type, site_type) store_result 
+      with
+      | error, None -> error, ([], [])
+      | error, Some (l, l') -> error, (l, l')
+    in
+    let error, result =
+      Int2Map_CV.Map.add_or_overwrite parameter error
         (agent_type, site_type) (l, cv_id :: old) store_result
-    in error, result
+    in
+    error, result
   in
   let error, store_result =
     (*From sites return a list of covering_class_id*)
@@ -266,14 +257,14 @@ let site_covering_classes parameter error covering_classes (*store_result*) =
         (*fold a dictionary*)
         let error, store_result =
           Dictionary_of_Covering_class.fold
-            (fun value_list ((),()) cv_id (error, store_result) ->
+            (fun list_of_site_type ((),()) cv_id (error, store_result) ->
               (*get site_cv in value*)
               List.fold_left (fun (error, store_result) site_type_cv ->
                 let error, result =
                   add_link (agent_type_cv, site_type_cv) cv_id store_result
                 in 
                 error, result
-              ) (error, store_result) value_list
+              ) (error, store_result) list_of_site_type
             ) cv_dic (error, store_result)
         in
         error, store_result

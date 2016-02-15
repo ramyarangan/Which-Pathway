@@ -36,41 +36,48 @@ type 'a event =
   'a test list *
     ('a action list * ('a site * 'a binding_state) list * 'a site list)
 
-let concretize_binding_state f = function
+let concretize_binding_state inj2graph = function
   | ANY -> ANY
   | FREE -> FREE
   | BOUND -> BOUND
   | BOUND_TYPE bt -> BOUND_TYPE bt
-  | BOUND_to (pl,s) -> BOUND_to ((f pl,Agent_place.get_type pl),s)
+  | BOUND_to (pl,s) -> BOUND_to (Agent_place.concretize inj2graph pl,s)
 
-let concretize_test f = function
-  | Is_Here pl -> Is_Here (f pl,Agent_place.get_type pl)
-  | Has_Internal ((pl,s),i) -> Has_Internal(((f pl,Agent_place.get_type pl),s),i)
-  | Is_Free (pl,s) -> Is_Free ((f pl,Agent_place.get_type pl),s)
-  | Is_Bound (pl,s) -> Is_Bound ((f pl,Agent_place.get_type pl),s)
+let concretize_test inj2graph = function
+  | Is_Here pl -> Is_Here (Agent_place.concretize inj2graph  pl)
+  | Has_Internal ((pl,s),i) ->
+     Has_Internal((Agent_place.concretize inj2graph pl,s),i)
+  | Is_Free (pl,s) -> Is_Free (Agent_place.concretize inj2graph pl,s)
+  | Is_Bound (pl,s) -> Is_Bound (Agent_place.concretize inj2graph pl,s)
   | Has_Binding_type ((pl,s),t) ->
-     Has_Binding_type (((f pl,Agent_place.get_type pl),s),t)
+     Has_Binding_type ((Agent_place.concretize inj2graph pl,s),t)
   | Is_Bound_to ((pl,s),(pl',s')) ->
-     Is_Bound_to (((f pl,Agent_place.get_type pl),s),
-		  ((f pl',Agent_place.get_type pl'),s'))
+     Is_Bound_to ((Agent_place.concretize inj2graph pl,s),
+		  (Agent_place.concretize inj2graph pl',s'))
 
-let concretize_action f = function
-  | Create (pl,i) -> Create ((f pl,Agent_place.get_type pl),i)
-  | Mod_internal ((pl,s),i) -> Mod_internal (((f pl,Agent_place.get_type pl),s),i)
+let concretize_action inj2graph = function
+  | Create (pl,i) -> Create (Agent_place.concretize inj2graph pl,i)
+  | Mod_internal ((pl,s),i) ->
+     Mod_internal ((Agent_place.concretize inj2graph pl,s),i)
   | Bind ((pl,s),(pl',s')) ->
-     Bind (((f pl,Agent_place.get_type pl),s),((f pl',Agent_place.get_type pl'),s'))
+     Bind ((Agent_place.concretize inj2graph pl,s),
+	   (Agent_place.concretize inj2graph pl',s'))
   | Bind_to ((pl,s),(pl',s')) ->
-     Bind_to (((f pl,Agent_place.get_type pl),s),((f pl',Agent_place.get_type pl'),s'))
-  | Free (pl,s) -> Free ((f pl,Agent_place.get_type pl),s)
-  | Remove pl -> Remove (f pl,Agent_place.get_type pl)
+     Bind_to ((Agent_place.concretize inj2graph pl,s),
+	      (Agent_place.concretize inj2graph pl',s'))
+  | Free (pl,s) -> Free (Agent_place.concretize inj2graph pl,s)
+  | Remove pl -> Remove (Agent_place.concretize inj2graph pl)
 
-let concretize_event f (tests,(actions,kasa_side,kasim_side)) =
-  (List.map (concretize_test f) tests,
-   (List.map (concretize_action f) actions,
-    List.map (fun ((pl,s),b) ->
-	      (((f pl, Agent_place.get_type pl),s),concretize_binding_state f b))
-	     kasa_side,
-    List.map (fun (pl,s) -> ((f pl, Agent_place.get_type pl),s)) kasim_side))
+let concretize_event inj2graph (tests,(actions,kasa_side,kasim_side)) =
+  (List.map (concretize_test inj2graph) tests,
+   (List.map (concretize_action inj2graph) actions,
+    List.map
+      (fun ((pl,s),b) ->
+       ((Agent_place.concretize inj2graph pl,s),
+	concretize_binding_state inj2graph b))
+      kasa_side,
+    List.map
+      (fun (pl,s) -> (Agent_place.concretize inj2graph pl,s)) kasim_side))
 
 let subst_map_concrete_agent f (id,na as agent) =
   try if f id == id then agent else (f id,na)
@@ -109,27 +116,31 @@ let subst_agent_in_concrete_test id id' x =
 let rename_abstract_test wk id cc inj x =
   subst_map_agent_in_test (Agent_place.rename wk id cc inj) x
 
-let subst_map_agent_in_action f = function
+
+let subst_map2_agent_in_action f f' = function
   | Create (agent,list) as x ->
-     let agent' = f agent in
+     let agent' = f' agent in
      if agent == agent' then x else Create(agent',list)
   | Mod_internal (site,i) as x ->
-     let site' = subst_map_site f site in
+     let site' = subst_map_site f' site in
      if site == site' then x else Mod_internal(site',i)
   | Bind (s1,s2) as x ->
-     let s1' = subst_map_site f s1 in
-     let s2' = subst_map_site f s2 in
+     let s1' = subst_map_site f' s1 in
+     let s2' = subst_map_site f' s2 in
      if s1==s1' && s2==s2' then x else Bind(s1',s2')
   | Bind_to (s1,s2) as x ->
-     let s1' = subst_map_site f s1 in
-     let s2' = subst_map_site f s2 in
+     let s1' = subst_map_site f' s1 in
+     let s2' = subst_map_site f' s2 in
      if s1==s1' && s2==s2' then x else Bind_to(s1',s2')
   | Free site as x ->
-     let site' = subst_map_site f site in
+     let site' = subst_map_site f' site in
      if site == site' then x else Free site'
   | Remove agent as x ->
      let agent' = f agent in
      if agent==agent' then x else Remove agent'
+
+let subst_map_agent_in_action f x = subst_map2_agent_in_action f f x
+
 let subst_map_agent_in_concrete_action f x =
   subst_map_agent_in_action (subst_map_concrete_agent f) x
 let subst_agent_in_concrete_action id id' x =
@@ -159,8 +170,18 @@ let subst_map_agent_in_event f (tests,(acs,kasa_side,kasim_side)) =
    (Tools.list_smart_map (subst_map_agent_in_action f) acs,
     Tools.list_smart_map (subst_map_agent_in_side_effect f) kasa_side,
     Tools.list_smart_map (subst_map_site f) kasim_side))
+let subst_map2_agent_in_event f f' (tests,(acs,kasa_side,kasim_side)) =
+  (Tools.list_smart_map (subst_map_agent_in_test f) tests,
+   (Tools.list_smart_map (subst_map2_agent_in_action f f') acs,
+    Tools.list_smart_map (subst_map_agent_in_side_effect f) kasa_side,
+    Tools.list_smart_map (subst_map_site f) kasim_side))
+
 let subst_map_agent_in_concrete_event f x =
   subst_map_agent_in_event (subst_map_concrete_agent f) x
+let subst_map2_agent_in_concrete_event f f' x =
+  subst_map2_agent_in_event
+    (subst_map_concrete_agent f) (subst_map_concrete_agent f') x
+
 let subst_agent_in_concrete_event id id' x =
   subst_map_agent_in_concrete_event
     (fun j -> if j = id then id' else j) x

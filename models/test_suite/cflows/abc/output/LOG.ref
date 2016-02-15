@@ -1,4 +1,4 @@
-+ Command line is: 'KaSim' '-i' 'abc.ka' '-seed' '785872661' '--compile'
++ Command line is: 'KaSim' '-i' 'abc.ka' '-seed' '785872661' '--compile' '-d' 'output' '-t' '0' '-p' '10'
 Parsing abc.ka...
 done
 + Initialized random number generator with seed 785872661
@@ -11,11 +11,11 @@ done
 + Compute the contact map
 	 -variable declarations
 	 -rules
-	 -observables
 	 -perturbations
+	 -observables
 	 -initial conditions
 	 Done
-+ Command line is: 'KaSim' '-i' 'abc.ka' '-seed' '924556145' '-var' 'on_rate' '1.0E-4' '-e' '2000' '-d' 'output' '-p' '500'
++ Command line is: 'KaSim' '-i' 'abc.ka' '-seed' '924556145' '-var' 'on_rate' '1.0E-4' '-e' '2000' '-d' 'output' '-p' '500' '--time-independent'
 Parsing abc.ka...
 done
 + Initialized random number generator with seed 924556145
@@ -28,8 +28,8 @@ done
 + Compute the contact map
 	 -variable declarations
 	 -rules
-	 -observables
 	 -perturbations
+	 -observables
 	 -initial conditions
 	 Done
 ____________________________________________________________
@@ -59,17 +59,6 @@ ____________________________________________________________
 	 - detecting pseudo inverse events (no change)
 	 - blackboard generation
 	 - computing causal past of each observed events (626)
-
-____________________________________________________________
-############################################################
-
-Stats:
- number of step   : 3375
- longest story    : 22
- average length   : 9.55431309904
- geometric mean   : 10.0136488324
-
-	 - causal flow compression (626)
 
 ____________________________________________________________
 ############################################################

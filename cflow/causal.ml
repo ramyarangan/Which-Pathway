@@ -101,7 +101,7 @@ let submap subs l m default =
     (fun m' a ->
       match IntMap.find_option a subs with
       | None -> raise Not_found
-      | Some new_a -> 
+      | Some new_a ->
 	IntMap.add new_a (
 	  match IntMap.find_option a m with
 	  | Some x -> x
@@ -251,7 +251,7 @@ let add_tests grid event_number kind tests =
        aux (add site1 true atom_tested grid' event_number kind) q
   in aux grid tests
 
-let record (kind,(tests,(actions,_,side_effects)))
+let record (kind,(tests,(actions,_,side_effects)),_)
 	   event_number env grid =
   let grid = add_tests grid event_number kind tests in
   let grid = add_actions env grid event_number kind actions in
@@ -308,11 +308,12 @@ let rec parse_attribute last_modif last_tested attribute config =
 	 match last_modif with
 	 | None -> config
 	 | Some eid ->
-	    add_conflict eid atom config (*adding conflict with last modification*) 
+	    add_conflict eid atom config (*adding conflict with last modification*)
        in
        parse_attribute last_modif (atom.eid::last_tested) att config
 
-let cut attribute_ids grid =
+let cut ?with_reduction:(with_reduction=true) parameter handler log_info error attribute_ids grid =
+  let error,log_info = StoryProfiling.StoryStats.add_event parameter error StoryProfiling.Build_configuration None log_info in
   let rec build_config attribute_ids cfg =
     match attribute_ids with
     | [] -> cfg
@@ -340,7 +341,16 @@ let cut attribute_ids grid =
 	      {cfg with prec_1 = prec_1 ; events_kind = events_kind}
        in build_config tl cfg
   in
-  build_config attribute_ids empty_config
+  let cfg = build_config attribute_ids empty_config in
+  let error,log_info = StoryProfiling.StoryStats.close_event parameter error StoryProfiling.Build_configuration None log_info in
+  let error,log_info,reduction =
+    if with_reduction
+    then
+      Graph_closure.reduction parameter handler log_info error cfg.prec_1
+    else
+      error,log_info,cfg.prec_1
+  in
+  error,log_info,{cfg with prec_1 = reduction}
 
 let pp_atom f atom =
   let imp_str = match atom.causal_impact with
@@ -349,7 +359,7 @@ let pp_atom f atom =
   Format.fprintf f "%s_%d" imp_str atom.eid
 
 let dump grid fic =
-  let d_chan = open_out ((Filename.chop_extension fic)^".txt") in
+  let d_chan = Kappa_files.open_out ((Filename.chop_extension fic)^".txt") in
   let d = Format.formatter_of_out_channel d_chan in
   let () = Format.pp_open_vbox d 0 in
   Hashtbl.fold
@@ -372,29 +382,29 @@ let ids_of_grid grid = Hashtbl.fold (fun key _ l -> key::l) grid.flow []
 let config_of_grid = cut
 
 
-(*let prec_star_of_config_old  config = 
+(*let prec_star_of_config_old  config =
   let rec prec_closure config todo already_done closure =
     if IntSet.is_empty todo then closure
     else
       let eid = IntSet.choose todo in
       let todo' = IntSet.remove eid todo in
-      if IntSet.mem eid already_done 
-      then 
-        prec_closure config todo' already_done closure 
-      else 
+      if IntSet.mem eid already_done
+      then
+        prec_closure config todo' already_done closure
+      else
         let prec = try IntMap.find eid config.prec_1 with Not_found -> IntSet.empty
         in
       prec_closure config (IntSet.union todo' prec) (IntSet.add eid already_done) (IntSet.union prec closure)
   in
-  IntMap.fold 
-    (fun eid kind prec_star -> 
+  IntMap.fold
+    (fun eid kind prec_star ->
       let set = prec_closure config (IntSet.singleton eid) IntSet.empty IntSet.empty
       in
       IntMap.add eid set prec_star
     ) config.events IntMap.empty *)
 
 let prec_star_of_config = Graph_closure.closure
-			   
+			
 let depth_and_size_of_event config =
   IntMap.fold
     (fun eid prec_eids (emap,_) ->
@@ -408,19 +418,15 @@ let depth_and_size_of_event config =
       IntMap.add eid d emap,d
     ) config.prec_1 (IntMap.empty,0)
 
-let enrich_grid err_fmt config_closure grid =
+let enrich_grid parameter handler log_info error config_closure grid =
   let keep_l =
     List.fold_left (fun a b -> IntSet.add b a) IntSet.empty grid.obs in
   let to_keep i = IntSet.mem i keep_l in
   let ids = ids_of_grid grid  in
-  let config = config_of_grid ids grid in
-  let init_to_eid_max i =
-    try Hashtbl.find grid.init_to_eidmax i
-    with Not_found -> 0 in
-  let prec_star = prec_star_of_config
-		    err_fmt config_closure config.prec_1 to_keep
-		    init_to_eid_max in
+  let error,log_info,config = config_of_grid parameter handler log_info error ids grid in
+  let error,log_info,prec_star = prec_star_of_config parameter handler log_info error (Some StoryProfiling.Transitive_closure) config_closure config.prec_1 to_keep in
   let depth_of_event,depth = depth_and_size_of_event config in
+  error,log_info,
   {
     config = config ;
     prec_star = prec_star ;
@@ -428,6 +434,15 @@ let enrich_grid err_fmt config_closure grid =
     depth_of_event = depth_of_event ;
     size = IntMap.size config.prec_1 ;
   }
+
+let fold_over_causal_past_of_obs parameter handler log_info error config_closure grid f a =
+  let keep_l = List.fold_left (fun a b -> IntSet.add b a) IntSet.empty grid.obs in
+  let to_keep i = IntSet.mem i keep_l in
+  let ids = ids_of_grid grid  in
+  let error,log_info = StoryProfiling.StoryStats.add_event parameter error StoryProfiling.Build_configuration None log_info in
+  let error,log_info,config = config_of_grid ~with_reduction:false parameter handler log_info error ids grid in
+  let ettor,log_info = StoryProfiling.StoryStats.close_event parameter error StoryProfiling.Build_configuration None log_info in
+  Graph_closure.closure_bottom_up_with_fold parameter handler log_info error (Some StoryProfiling.Collect_traces) config_closure config.prec_1 to_keep f a
 
 let dot_of_grid profiling env enriched_grid form =
   let t = Sys.time () in
@@ -600,38 +615,42 @@ let html_of_grid profiling compression_type cpt env enriched_grid =
 
 (*story_list:[(key_i,list_i)] et list_i:[(grid,_,sim_info option)...]
  et sim_info:{with story_id:int story_time: float ; story_event: int}*)
-let pretty_print err_fmt env config_closure compression_type label story_list =
-  let n = List.length story_list in
-  let () =
-    if compression_type = "" then
-      Format.fprintf err_fmt "+ Pretty printing %d flow%s@."
-		     n (if n>1 then "s" else "")
-    else
-      Format.fprintf err_fmt "+ Pretty printing %d %scompressed flow%s@."
-		     n label (if n>1 then "s" else "")
-  in
-  let compression_type =
-    if compression_type = "" then "none" else compression_type in
-  let story_list =
-    List.map (fun (x,y) -> enrich_grid err_fmt config_closure x,y) story_list in
+let pretty_print parameter handler log_info error env config_closure compression_type label story_list =
+  match
+    Loggers.formatter_of_logger (Remanent_parameters.get_logger parameter)
+  with
+  | None -> error, log_info
+  | Some err_fmt ->
+    let n = List.length story_list in
+    let () =
+      if compression_type = "" then
+	Format.fprintf err_fmt "+ Pretty printing %d flow%s@."
+	  n (if n>1 then "s" else "")
+      else
+	Format.fprintf err_fmt "+ Pretty printing %d %scompressed flow%s@."
+	  n label (if n>1 then "s" else "")
+    in
+    let compression_type =
+      if compression_type = "" then "none" else compression_type in
+    let error,log_info,story_list =
+      List.fold_left
+	(fun (error,log_info,list) (x,y) ->
+	  let error,log_info,x = enrich_grid parameter handler log_info error config_closure x in
+	  error,log_info,(x,y)::list)
+	(error,log_info,[]) story_list
+    in
+    let story_list = List.rev story_list in
   let _ =
     List.fold_left
       (fun cpt (enriched_config,stories) ->
-       let av_t,ids,n =
+	let av_t,ids,n =
 	 List.fold_left
 	   (fun (av_t,ids,n) info ->
-	    (av_t +. info.story_time,info.story_id::ids,n+1)
+	     (av_t +. info.story_time,info.story_id::ids,n+1)
 	   )
 	   (0.,[],0) (List.rev stories)
-       in
-       let enriched_config' =
-	 if !Parameter.reduceCflows
-	 then {enriched_config with
-		config = {enriched_config.config with
-			   prec_1 = Graph_closure.reduction
-				      enriched_config.config.prec_1}}
-	 else enriched_config in
-        let () =   (*dump grid fic state env ; *)
+	in
+	let () =   (*dump grid fic state env ; *)
 	  if !Parameter.dotCflows then
 	    let profiling desc =
 	      Format.fprintf
@@ -642,11 +661,11 @@ let pretty_print err_fmt env config_closure compression_type label story_list =
 	      Format.fprintf
 		desc "@[/* Compressed causal flows were:@ [%a] */@]"
 		(Pp.list (fun f -> Format.fprintf f ";@,")
-			 Format.pp_print_int) ids
+		   Format.pp_print_int) ids
 	    in
 	    Kappa_files.with_cflow_file
 	      [compression_type;string_of_int cpt] "dot"
-	      (dot_of_grid profiling env enriched_config')
+	      (dot_of_grid profiling env enriched_config)
 	  else
 	    let profiling desc =
 	      Format.fprintf
@@ -659,33 +678,35 @@ let pretty_print err_fmt env config_closure compression_type label story_list =
 	      Format.fprintf
 		desc "@ <dd>[@[%a@]]</dd>@]@,</dl>"
 		(Pp.list (fun f -> Format.fprintf f ";@,")
-			 Format.pp_print_int) ids;
-       in
-
+		   Format.pp_print_int) ids;
+	    in
 	    Kappa_files.with_cflow_file
 	      [compression_type;string_of_int cpt] "html"
 	      (html_of_grid
-		 profiling compression_type cpt env enriched_config') in
+		profiling compression_type cpt env enriched_config) in
 	cpt+1
       ) 0 story_list
   in
-  Kappa_files.with_cflow_file
-    [compression_type;"Summary"] "dat"
-    (fun form ->
-     let () = Format.fprintf form "@[<v>#id\tE\tT\t\tdepth\tsize\t@," in
-     let () =
-       Pp.listi Pp.empty
-		(fun cpt f (enriched_config,story) ->
-		 let depth = enriched_config.depth in
-		 let size = enriched_config.size in
-		 List.iter
-		   (fun info  ->
+  let _ =
+    Kappa_files.with_cflow_file
+      [compression_type;"Summary"] "dat"
+      (fun form ->
+	let () = Format.fprintf form "@[<v>#id\tE\tT\t\tdepth\tsize\t@," in
+	let () =
+	  Pp.listi Pp.empty
+	    (fun cpt f (enriched_config,story) ->
+	      let depth = enriched_config.depth in
+	      let size = enriched_config.size in
+	      List.iter
+		(fun info  ->
 		    let time = info.story_time in
 		    let event = info.story_event in
 		    Format.fprintf f "%i\t%i\t%E\t%i\t%i\t@,"
-				   cpt event time depth size
-		   ) story) form story_list in
-     Format.fprintf form "@]@?")
+		      cpt event time depth size
+		) story) form story_list in
+	Format.fprintf form "@]@?")
+  in
+  error,log_info
 
 let print_stat f parameter handler enriched_grid =
   let count_obs =
@@ -694,14 +715,14 @@ let print_stat f parameter handler enriched_grid =
     with
       Graph_closure.Increasing_with_last_event -> (fun x -> x)
     | Graph_closure.Decreasing_without_last_event -> succ
-  in 
+  in
   let size = Array.length (fst enriched_grid.prec_star) in
   let rec aux k n_step longest_story n_nonempty length_sum length_square_sum =
     if k>=size
     then (n_step,longest_story,n_nonempty,length_sum,length_square_sum)
     else
       let cc = List.length (Array.get (fst enriched_grid.prec_star) k) in
-      let cc' = if cc>0 then count_obs cc else cc in 
+      let cc' = if cc>0 then count_obs cc else cc in
       aux (k+1) (n_step+1) (max longest_story  cc')
         (if cc>0 then n_nonempty+1 else n_nonempty)
         (length_sum+cc') (length_square_sum+cc'*cc') in

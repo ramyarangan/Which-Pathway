@@ -99,14 +99,14 @@ type story_t = (adjacency_list_t * adjacency_list_t) * (StoryEvent.t list)
 (************************************************************************** 
  * Obtain marshaled story from file.
  *)
-let get_stories_from_file () = 
+(* let get_stories_from_file () = 
 	let trace_grid_list =	Kappa_files.from_marshalized_story 
 		(fun d -> Marshal.from_channel d) in
 	let convert_to_story (trace, enriched_grid) = 
 		
 	in
 	List.map convert_to_story trace_grid_list
-
+*) 
 (**************************************************************************
 * Create test story for weakly compressed story matching algorithm.
 * Eventually we will read this from user input depending on the story 
@@ -128,7 +128,7 @@ let find_all_applications env steps =
 	let map = IntMap.empty in 
 	let find_application env map step = 
 		match step with
-		| KI.Event ((Causal.RULE (rule)), inst) -> (	
+		| KI.Event ((Causal.RULE (rule)), inst, _) -> (	
 				map_add_val_to_list map rule inst
 		)
 		| _ -> map
@@ -274,7 +274,7 @@ let step_weak_algorithm (s : story_t) (wq, result_map, is_done) mark_step =
 		let (step_id, step) = mark_step in
 		let ((forward_edges, backward_edges), _) = s in
 		match step with
-		| KI.Event (Causal.RULE (rule), trace_inst) -> (
+		| KI.Event (Causal.RULE (rule), trace_inst, _) -> (
 			(* Here we have found that this trace contains instantiations of the 
 			 * story's rule. *)
 			if IntMap.mem rule wq then (
@@ -731,7 +731,7 @@ let step_state_strong_algorithm s mark_step (states_list, all_is_done) (state) =
 	else 
 		let (step_id, step) = mark_step in
 		match step with
-		| KI.Event (Causal.RULE (rule), trace_inst) -> (
+		| KI.Event (Causal.RULE (rule), trace_inst, _) -> (
 			let (wq, _, mapping, _) = state in
 			if IntMap.mem rule wq then (
 				(* See if any rule application is applicable given current mapping. Returns
@@ -793,7 +793,7 @@ let print_trace env steps =
 
 let print_rule env f step = 
 	match step with 
-	| KI.Event (Causal.RULE (rule), _) ->
+	| KI.Event (Causal.RULE (rule), _, _) ->
 		Environment.print_rule ~env:env Format.err_formatter rule
 	| _ -> ()
 

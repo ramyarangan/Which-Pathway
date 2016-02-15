@@ -20,16 +20,22 @@ module type Cflow_handler =
 	  kasa: Remanent_parameters_sig.parameters ;
 	  always_disambiguate_initial_states : bool  ;
 	  bound_on_itteration_number: int option ;
-	  reduce_graph_before_canonicalisation: bool ;
+	  time_independent: bool ;
 	} 
 
     type handler =   (*handler to interpret abstract values*)
         {
           env: Environment.t ;
-        }
+	  rule_name_cache: string array;
+	  agent_name_cache: string array;
+	    steps_by_column:  (int * Predicate_maps.predicate_value * bool) list Predicate_maps.QPredicateMap.t ;
+	}
 
-    type 'a with_handler = parameter -> handler -> Exception.method_handler -> 'a
-
+    type 'a zeroary = parameter -> handler -> StoryProfiling.StoryStats.log_info -> Exception.method_handler -> Exception.method_handler * StoryProfiling.StoryStats.log_info * 'a
+    type ('a,'b) unary  = parameter -> handler -> StoryProfiling.StoryStats.log_info -> Exception.method_handler -> 'a -> Exception.method_handler * StoryProfiling.StoryStats.log_info * 'b
+    type ('a,'b,'c) binary  = parameter -> handler -> StoryProfiling.StoryStats.log_info -> Exception.method_handler -> 'a -> 'b -> Exception.method_handler * StoryProfiling.StoryStats.log_info * 'c
+    type ('a,'b,'c,'d) ternary  = parameter -> handler -> StoryProfiling.StoryStats.log_info -> Exception.method_handler -> 'a -> 'b -> 'c ->  Exception.method_handler * StoryProfiling.StoryStats.log_info * 'd
+    type ('a,'b,'c,'d,'e) quaternary  = parameter -> handler -> StoryProfiling.StoryStats.log_info -> Exception.method_handler -> 'a -> 'b -> 'c -> 'd -> Exception.method_handler * StoryProfiling.StoryStats.log_info * 'e	  
     val do_not_bound_itterations: parameter -> parameter 									 
     val set_itteration_bound: parameter -> int -> parameter 
     val get_bound_on_itteration_number: parameter -> int option 
@@ -46,6 +52,7 @@ module type Cflow_handler =
     val get_log_step: parameter -> bool
     val set_debugging_mode: parameter -> bool -> parameter
     val get_debugging_mode: parameter -> bool
+    val get_profiling_logger: parameter -> Format.formatter 
     val get_logger: parameter -> Format.formatter
     val set_logger: parameter -> Format.formatter -> parameter
     val get_out_channel: parameter -> Format.formatter
@@ -59,7 +66,11 @@ module type Cflow_handler =
     val use_fusion_sort: parameter -> parameter
     val always_disambiguate: parameter -> bool 
     val set_always_disambiguate: parameter -> bool -> parameter 
-    val do_we_reduce_graph_before_canonicalisation: parameter -> bool 
+    val init_handler: Environment.t -> handler
+    val string_of_rule_id: handler -> int -> string
+    val string_of_agent_id: handler -> int -> string
+    val get_predicate_map: handler -> (int * Predicate_maps.predicate_value * bool) list Predicate_maps.QPredicateMap.t
+    val get_is_time_independent: parameter -> bool
   end
 
 module Cflow_handler:Cflow_handler

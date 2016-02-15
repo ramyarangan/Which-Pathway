@@ -2,16 +2,10 @@ let usage_msg =
   "KaSim "^Version.version_string^":\n"^
     "Usage is KaSim [-i] input_file [-e events | -t time] [-p points] [-o output_file]\n"
 
-let close_desc opt_env =
-  let () = Kappa_files.close_all_out_desc () in
-  List.iter (fun d -> close_in d) !Parameter.openInDescriptors ;
-  match opt_env with
-  | None -> ()
-  | Some env -> Environment.close_desc env
-
 let (maxEventValue:int option ref) = ref None
 let (maxTimeValue:float option ref) = ref None
 let (pointNumberValue:int ref) = ref 0
+let (rescale:float option ref) = ref None
 
 let () =
   let options = [
@@ -86,8 +80,11 @@ let () =
      Arg.Unit (fun () -> Gc.set { (Gc.get()) with
 				  Gc.space_overhead = 500 (*default 80*) } ;),
      "Lower gc activity for a faster but memory intensive simulation") ;
-    ("-rescale-to", Arg.Int (fun i -> Parameter.rescale:=Some i),
-     "Rescale initial concentration to given number for quick testing purpose");
+    ("-rescale", Arg.Float (fun i -> rescale:=Some i),
+     "Apply rescaling factor to initial condition");
+    ("--time-independent",
+     Arg.Set Parameter.time_independent,
+     "Disable the use of time is story heuritics (for test suite)")
   ]
   in
   try
@@ -122,10 +119,8 @@ let () =
 		  Sys.argv;
 
     let result =
-      Ast.init_compil() ;
-      List.iter (fun fic -> KappaLexer.compile Format.std_formatter fic)
-		!Parameter.inputKappaFileNames ;
-      !Ast.result in
+      List.fold_left (KappaLexer.compile Format.std_formatter)
+		     Ast.empty_compil !Parameter.inputKappaFileNames in
 
     let theSeed =
       match !Parameter.seedValue with
@@ -142,13 +137,15 @@ let () =
       "+ Initialized random number generator with seed %d@." theSeed;
 
     let counter =
-      Counter.create !pointNumberValue 0.0 0
-		     !maxTimeValue !maxEventValue in
+      Counter.create
+	~init_t:0. ~init_e:0 ?max_t:!maxTimeValue ?max_e:!maxEventValue
+	~nb_points:!pointNumberValue in
     let (kasa_state,env, cc_env, graph, new_state) =
       match !Parameter.marshalizedInFile with
       | "" ->
 	 Eval.initialize
-	   Format.std_formatter !Parameter.alg_var_overwrite counter result
+	   ?rescale_init:!rescale Format.std_formatter
+	   !Parameter.alg_var_overwrite counter result
       | marshalized_file ->
 	 try
 	   let d = open_in_bin marshalized_file in
@@ -186,16 +183,24 @@ let () =
 
     Kappa_files.setCheckFileExists() ;
 
-    let () = Plot.create (Kappa_files.get_data ()) in
+    let () =
+      let head =
+	Environment.map_observables
+	  (Format.asprintf "%a" (Kappa_printer.alg_expr ~env))
+	  env in
+      if !pointNumberValue > 0 || head <> [||] then
+	Outputs.create_plot (Kappa_files.get_data ()) head in
     let () =
       if !pointNumberValue > 0 then
-	Plot.plot_now
-	  env (Counter.current_time counter)
-	  (State_interpreter.observables_values env counter graph new_state) in
+	Outputs.go (Environment.signatures env)
+	  (Data.Plot
+	     (Counter.current_time counter,
+	      State_interpreter.observables_values env counter graph new_state)) in
 
     Parameter.initSimTime () ;
     let () =
-      State_interpreter.loop Format.std_formatter env cc_env counter graph new_state
+      State_interpreter.loop
+	~outputs:(Outputs.go  (Environment.signatures env)) Format.std_formatter env cc_env counter graph new_state
     in
     Format.printf "Simulation ended";
     if Counter.nb_null_event counter = 0 then Format.print_newline()
@@ -210,12 +215,12 @@ let () =
   with
   | ExceptionDefn.Malformed_Decl er ->
      let () = ExceptionDefn.flush_warning Format.err_formatter in
-     let () = close_desc None in
+     let () = Kappa_files.close_all_out_desc () in
      let () = Pp.error Format.pp_print_string er in
      exit 2
   | ExceptionDefn.Internal_Error er ->
      let () = ExceptionDefn.flush_warning Format.err_formatter in
-     let () = close_desc None in
+     let () = Kappa_files.close_all_out_desc () in
      let () =
        Pp.error
 	 (fun f x -> Format.fprintf f "Internal Error (please report):@ %s" x)
@@ -223,18 +228,18 @@ let () =
      exit 2
   | Invalid_argument msg ->
      let () = ExceptionDefn.flush_warning Format.err_formatter in
-     let () = close_desc None in
+     let () = Kappa_files.close_all_out_desc () in
      let s = "" (*Printexc.get_backtrace()*) in
      let () = Format.eprintf "@.@[<v>***Runtime error %s***@,%s@]@." msg s in
     exit 2
   | ExceptionDefn.UserInterrupted f ->
      let () = ExceptionDefn.flush_warning Format.err_formatter in
-     let () = close_desc None in
+     let () = Kappa_files.close_all_out_desc () in
      let msg = f 0. 0 in
      let () =Format.eprintf "@.***Interrupted by user: %s***@." msg in
      exit 1
   | Sys_error msg ->
      let () = ExceptionDefn.flush_warning Format.err_formatter in
-     let () = close_desc None in
+     let () = Kappa_files.close_all_out_desc () in
      let () = Format.eprintf "%s@." msg in
      exit 2

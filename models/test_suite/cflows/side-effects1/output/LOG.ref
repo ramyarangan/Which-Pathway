@@ -1,4 +1,4 @@
-+ Command line is: 'KaSim' '-i' 'side-effects.ka' '-seed' '924556145' '-e' '10000' '-d' 'output'
++ Command line is: 'KaSim' '-i' 'side-effects.ka' '-seed' '924556145' '-e' '10000' '-d' 'output' '--time-independent'
 Parsing side-effects.ka...
 done
 + Initialized random number generator with seed 924556145
@@ -11,8 +11,8 @@ done
 + Compute the contact map
 	 -variable declarations
 	 -rules
-	 -observables
 	 -perturbations
+	 -observables
 	 -initial conditions
 	 Done
 ____________________________________________________________
@@ -42,17 +42,6 @@ ____________________________________________________________
 	 - detecting pseudo inverse events (no change)
 	 - blackboard generation
 	 - computing causal past of each observed events (8)
-Stats:
- number of step   : 18
- longest story    : 5
- average length   : 4.5
- geometric mean   : 4.52769256907
-
-	 - causal flow compression (8)
-
-____________________________________________________________
-############################################################
-
 
 
 	 - weak flow compression (2)

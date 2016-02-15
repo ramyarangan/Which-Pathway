@@ -1,4 +1,4 @@
-+ Command line is: 'KaSim' '-i' 'empty.ka' '-e' '18' '-d' 'output' '-seed' '126704914' '-p' '50'
++ Command line is: 'KaSim' '-i' 'empty.ka' '-e' '18' '-d' 'output' '-seed' '126704914' '-p' '50' '--time-independent'
 Parsing empty.ka...
 done
 + Initialized random number generator with seed 126704914
@@ -11,8 +11,8 @@ done
 + Compute the contact map
 	 -variable declarations
 	 -rules
-	 -observables
 	 -perturbations
+	 -observables
 	 -initial conditions
 	 Done
 ____________________________________________________________
@@ -42,17 +42,6 @@ ____________________________________________________________
 	 - detecting pseudo inverse events (no change)
 	 - blackboard generation
 	 - computing causal past of each observed events (4)
-Stats:
- number of step   : 21
- longest story    : 5
- average length   : 5.
- geometric mean   : 5.
-
-	 - causal flow compression (4)
-
-____________________________________________________________
-############################################################
-
 
 
 	 - weak flow compression (2)

@@ -18,7 +18,7 @@ module CharSetMap = SetMap.Make (struct type t = char let compare = compare end)
 module CharSet = CharSetMap.Set
 module CharMap = CharSetMap.Map
 
-module DynArray = DynamicArray.DynArray(LargeArray.GenArray)
+module DynArray = DynamicArray.DynArray(LargeArray)
 
 type 'a simulation_info = (* type of data to be given with observables for story compression (such as date when the obs is triggered*)
     {
@@ -28,6 +28,9 @@ type 'a simulation_info = (* type of data to be given with observables for story
       profiling_info: 'a;
     }
 
+let event_of_simulation_info a = a.story_event
+let story_id_of_simulation_info a = a.story_id
+      
 module Palette:
 	sig
 	  type t

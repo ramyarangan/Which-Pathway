@@ -50,12 +50,14 @@ type rule = {
   add_token: ((mixture,string) ast_alg_expr Location.annot
 	      * string Location.annot) list;
   k_def: (mixture,string) ast_alg_expr Location.annot ;
-  k_absolute: bool;
   k_un:
     ((mixture,string) ast_alg_expr Location.annot *
-       (mixture,string) ast_alg_expr Location.annot option) option;
+       int Location.annot option) option;
   (*k_1:radius_opt*)
   k_op: (mixture,string) ast_alg_expr Location.annot option ;
+  k_op_un:
+    ((mixture,string) ast_alg_expr Location.annot *
+       int Location.annot option) option;
   (*rate for backward rule*)
 }
 
@@ -161,21 +163,7 @@ let no_more_site_on_right warning left right =
 	in false)
     right
 
-let result:(agent,mixture,string,rule) compil ref =
-  ref {
-    variables      = [];
-    signatures     = [];
-    rules          = [];
-    init           = [];
-    observables    = [];
-    perturbations  = [];
-    configurations = [];
-    tokens         = [];
-    volumes        = []
-  }
-
-let init_compil () =
-  result :=
+let empty_compil =
     {
       variables      = [];
       signatures     = [];
@@ -273,11 +261,11 @@ let print_rates un op f def =
     (fun f ->
      match un with
        None -> ()
-		 | Some (d,o) ->
-		    Format.fprintf
-		      f " (%a)"
-		      (print_raw_rate print_ast_mix Format.pp_print_string Format.pp_print_string o)
-		      d)
+     | Some ((d,_),max_dist) ->
+	Format.fprintf
+	  f "(%a:%a)" 
+	  (print_ast_alg print_ast_mix Format.pp_print_string Format.pp_print_string) d
+	  (Pp.option (fun f (md,_) -> Format.pp_print_int f md)) max_dist)
 let print_ast_rule f r =
   Format.fprintf
     f "@[<h>%a %a %a @@ %a@]"

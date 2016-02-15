@@ -17,6 +17,7 @@ let tokenify contact_map counter domain l =
      (domain',(alg,id)::out)
     ) l (domain,[])
 
+(* transform an LKappa rule into a Primitives rule *)
 let rules_of_ast ?deps_machinery contact_map counter domain ~syntax_ref (rule,_) =
   let domain',rm_toks =
     tokenify contact_map counter domain rule.LKappa.r_rm_tokens in
@@ -32,13 +33,20 @@ let rules_of_ast ?deps_machinery contact_map counter domain ~syntax_ref (rule,_)
   let unary_infos =
     match rule.LKappa.r_un_rate with
     | None -> fun _ uncc -> crate,None,uncc
-    | Some (_,pos as rate) ->
+    | Some ((_,pos as rate),dist) ->
+       let dist' = match dist with
+	 | None -> None
+	 | Some (dist, pos_dist) ->
+	    if dist = 0 then
+	      raise (ExceptionDefn.Malformed_Decl
+		      ("Unary rule caanot be applied at distance 0. ",pos_dist))
+	    else Some dist in
        let (unrate,_) = Expr.compile_pure_alg counter rate in
        fun ccs uncc ->
        match Array.length ccs with
        | (0 | 1) -> unrate,None,uncc
        | 2 ->
-	  crate,Some unrate,
+	  crate,Some (unrate, dist'),
 	  Connected_component.Set.add
 	    ccs.(0) (Connected_component.Set.add ccs.(1) uncc)
        | n ->
@@ -55,7 +63,6 @@ let rules_of_ast ?deps_machinery contact_map counter domain ~syntax_ref (rule,_)
       deps,un_ccs',{
 	Primitives.unary_rate = unrate;
 	Primitives.rate = rate;
-	Primitives.rate_absolute = rule.LKappa.r_rate_absolute;
 	Primitives.connected_components = ccs;
 	Primitives.removed = neg;
 	Primitives.inserted = pos;
@@ -64,7 +71,7 @@ let rules_of_ast ?deps_machinery contact_map counter domain ~syntax_ref (rule,_)
 	Primitives.syntactic_rule = syntax_ref;
 	Primitives.instantiations = syntax;
       } in
-  let (domain',origin'),rule_mixtures =
+  let rule_mixtures,(domain',origin') =
     Snip.connected_components_sum_of_ambiguous_rule
       contact_map domain'' ?origin rule.LKappa.r_mix rule.LKappa.r_created in
   let deps_algs',unary_ccs',rules_l =
@@ -142,7 +149,7 @@ let effects_of_modif
 	{ LKappa.r_mix = mix; LKappa.r_created = created;
 	  LKappa.r_rm_tokens = rm; LKappa.r_add_tokens = add;
 	  LKappa.r_rate = Location.dummy_annot (CONST Nbr.zero);
-	  LKappa.r_rate_absolute = false; LKappa.r_un_rate = None; } in
+	  LKappa.r_un_rate = None; } in
       let (domain',alg_pos) =
 	Expr.compile_alg contact_map counter domain alg_expr in
       let domain'',_,_,elem_rules =
@@ -295,7 +302,8 @@ let pert_of_result
   let lpert = lpert_stopping_time@lpert_ineq in
   ( domain, lpert,stop_times,tracking_enabled)
 
-let init_graph_of_result algs has_tracking contact_map counter env domain res =
+let init_graph_of_result
+      ?rescale algs has_tracking contact_map counter env domain res =
   let domain',init_state =
     List.fold_left
       (fun (domain,state) (_opt_vol,init_t) -> (*TODO dealing with volumes*)
@@ -305,12 +313,15 @@ let init_graph_of_result algs has_tracking contact_map counter env domain res =
 	  let (domain',alg') =
 	    Expr.compile_alg contact_map counter domain alg in
 	  let value = initial_value_alg counter algs alg' in
+	  let value' = match rescale with
+	    | None -> value
+	    | Some r -> Nbr.mult value (Nbr.F r) in
 	  let fake_rule =
 	    { LKappa.r_mix = [];
 	      LKappa.r_created = LKappa.to_raw_mixture sigs ast;
 	      LKappa.r_rm_tokens = []; LKappa.r_add_tokens = [];
 	      LKappa.r_rate = Location.dummy_annot (CONST Nbr.zero);
-	      LKappa.r_rate_absolute = false; LKappa.r_un_rate = None; } in
+	      LKappa.r_un_rate = None; } in
 	  let domain'',state' =
 	    match
 	      rules_of_ast
@@ -340,7 +351,7 @@ let init_graph_of_result algs has_tracking contact_map counter env domain res =
 		     raise (ExceptionDefn.Internal_Error
 			      ("Bugged initial rule",mix_pos))
       )
-		 state value
+		 state value'
 	    | domain'',_,_,[] -> domain'',state
 	    | _,_,_,_ ->
 	       raise (ExceptionDefn.Malformed_Decl
@@ -353,7 +364,7 @@ let init_graph_of_result algs has_tracking contact_map counter env domain res =
 	    { LKappa.r_mix = []; LKappa.r_created = []; LKappa.r_rm_tokens = [];
 	      LKappa.r_add_tokens = [(alg, tk_id)];
 	      LKappa.r_rate = Location.dummy_annot (CONST Nbr.zero);
-	      LKappa.r_rate_absolute = false; LKappa.r_un_rate = None; } in
+	      LKappa.r_un_rate = None; } in
 	  let domain',state' =
 	    match
 	      rules_of_ast
@@ -419,6 +430,14 @@ let configurations_of_result result =
 	  in
 	  parse value_list
 	end
+     | "store_unary_distance" -> 
+	(match value_list with
+	| ("true",_)::_ -> Parameter.store_unary_distance := true
+	| ("false",_)::_ -> Parameter.store_unary_distance := false
+	| [] -> ()
+	| (error,pos)::_ ->
+	   raise (ExceptionDefn.Malformed_Decl
+		    ("Unkown value "^error^" for store unary distance", pos)))
      | "cflowFileName"	->
 	raw_set_value pos_p param value_list (fun x _ -> Kappa_files.set_cflow x)
      | "progressBarSize" ->
@@ -456,12 +475,8 @@ let configurations_of_result result =
 			      ("Value "^v^" should be an integer",p))
 		  ) Parameter.maxConsecutiveClash
 
-     | "dotSnapshots" ->
-	set_bool_value pos_p param value_list Parameter.dotSnapshots
      | "dotCflows" ->
 	set_bool_value pos_p param value_list Parameter.dotCflows
-     | "reduceCflows" ->
-	set_bool_value pos_p param value_list Parameter.reduceCflows
      | "colorDot" ->
 	set_value pos_p param value_list
 		  (fun value pos_v ->
@@ -518,7 +533,7 @@ let compile_rules alg_deps contact_map counter domain rules =
   | _, _, None, _, _ ->
      failwith "The origin of Eval.compile_rules has been lost"
 
-let initialize logger overwrite counter result =
+let initialize logger ?rescale_init overwrite counter result =
   Debug.tag logger "+ Building initial simulation conditions...";
   Debug.tag logger "+ Compiling..." ;
   Debug.tag logger "\t -simulation parameters" ;
@@ -545,13 +560,34 @@ let initialize logger overwrite counter result =
     compile_rules alg_deps contact_map counter domain' result'.Ast.rules in
   let rule_nd = Array.of_list compiled_rules in
 
-  Debug.tag logger "\t -observables";
-  let domain,obs =
-    obs_of_result contact_map counter domain' result' in
   Debug.tag logger "\t -perturbations" ;
   let (domain,pert,stops,tracking_enabled) =
     pert_of_result alg_nd alg_deps' result'.variables result'.rules
-		   contact_map counter domain result' in
+		   contact_map counter domain' result' in
+  let () =
+    if Counter.max_time counter = None && Counter.max_events counter = None &&
+	 not @@
+	   Primitives.exists_modification
+	     (function Primitives.STOP _ -> true
+		     | (Primitives.ITER_RULE _ | Primitives.UPDATE _ |
+			Primitives.SNAPSHOT _ | Primitives.CFLOW _ |
+			Primitives.FLUX _ | Primitives.FLUXOFF _ |
+			Primitives.CFLOWOFF _ | Primitives.PLOTENTRY |
+			Primitives.PRINT _) -> false) pert then
+      raise (ExceptionDefn.Malformed_Decl
+	       (Location.dummy_annot "There is no way for the simulation to stop.")) in
+
+  Debug.tag logger "\t -observables";
+  let domain,obs =
+    obs_of_result contact_map counter domain result' in
+  let () =
+    match obs with
+    | (_,pos) :: _ when Counter.plot_points counter = 0
+			&& not @@ Primitives.exists_modification
+				    (fun x -> x = Primitives.PLOTENTRY) pert ->
+       raise (ExceptionDefn.Malformed_Decl
+		("Number of point to plot has not been defined.",pos))
+    | _ -> () in
 
   let env =
     Environment.init sigs_nd tk_nd alg_nd alg_deps'
@@ -561,7 +597,8 @@ let initialize logger overwrite counter result =
   Debug.tag logger "\t -initial conditions";
   let domain,graph =
     init_graph_of_result
-      alg_nd tracking_enabled contact_map counter env domain result' in
+      ?rescale:rescale_init alg_nd tracking_enabled contact_map
+      counter env domain result' in
   let () =
     if !Parameter.compileModeOn || !Parameter.debugModeOn then
       Format.eprintf
@@ -570,4 +607,16 @@ let initialize logger overwrite counter result =
 	Connected_component.Env.print domain
 	(Rule_interpreter.print env) graph in
   let graph',state = State_interpreter.initial env counter graph stops in
-  (Debug.tag logger "\t Done"; (kasa_state,env, domain, graph', state))
+  let () =
+    if tracking_enabled &&
+	 not (!Parameter.causalModeOn || !Parameter.weakCompression ||
+		!Parameter.mazCompression || !Parameter.strongCompression)
+    then
+      ExceptionDefn.warning
+	(fun f ->
+	 Format.fprintf
+	   f
+	   "An observable may be tracked but no compression level to render stories has been specified")
+  in
+  (Debug.tag logger "\t Done";
+   (kasa_state,env, Connected_component.Env.finalize domain, graph', state))

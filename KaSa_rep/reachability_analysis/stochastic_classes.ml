@@ -23,100 +23,91 @@ let trace = false
 
 module AgentMap = Int_storage.Quick_Nearly_inf_Imperatif
 
-type sites_stochastic_class = int list AgentMap.t
-
 type stochastic_class =
   {
-    stochastic_class : sites_stochastic_class
+    stochastic_class : int list AgentMap.t
   }
-
-(*------------------------------------------------------------------------------*)
-(*return a list of site in the rhs rule. And combine the site of each agent.
-  For example: A(x), A(y) => A(x,y)
-*)
-
-let get_sites_list parameter error agent_type agent stochastic_class =
-  let sites_list =
-    Cckappa_sig.Site_map_and_set.Map.fold
-      (fun site _ current_list ->
-       site :: current_list)
-      agent.Cckappa_sig.agent_interface []
-  in
-  let error, old_list =
-    Int_storage.Quick_Nearly_inf_Imperatif.unsafe_get
-      parameter
-      error
-      agent_type
-      stochastic_class
-  in
-  let old_list =
-    match old_list with
-    | None -> []
-    | Some old_list -> old_list
-  in
-  let new_list = List.concat [sites_list;old_list] in
-  let error, stochastic_class =
-    Int_storage.Quick_Nearly_inf_Imperatif.set
-      parameter
-      error
-      agent_type
-      new_list
-      stochastic_class
-  in
-  error, stochastic_class
 
 (************************************************************************************)   
 (*RULE*)
             
 let scan_rule parameter error handler rule classes =
-  let viewslhs = rule.Cckappa_sig.rule_lhs.Cckappa_sig.views in
-  let viewsrhs = rule.Cckappa_sig.rule_rhs.Cckappa_sig.views in
-  let creation = rule.Cckappa_sig.actions.Cckappa_sig.creation in
-  let error,stochastic_class_rhs = Int_storage.Quick_Nearly_inf_Imperatif.create
-    parameter error 0 in
+  let error, store_result = AgentMap.create parameter error 0 in
   (*Compute the stochastic class in the case there is a new agent is created in the rhs*)
   let error, stochastic_class_rhs =
     List.fold_left
-      (fun (error, stochastic_class_rhs) (agent_id, agent_type) ->
+      (fun (error, store_result) (agent_id, agent_type) ->
 	let error, agent =
-          Int_storage.Quick_Nearly_inf_Imperatif.get
+          AgentMap.get
 	    parameter
 	    error
 	    agent_id
-	    viewsrhs
+            rule.Cckappa_sig.rule_rhs.Cckappa_sig.views
 	in
 	match agent with
 	  | None
-	  | Some Cckappa_sig.Unknown_agent _ | Some Cckappa_sig.Ghost -> error, stochastic_class_rhs
-	  | Some Cckappa_sig.Dead_agent (agent,_,_,_) | Some Cckappa_sig.Agent agent ->
-             get_sites_list
-               parameter
-               error
-               agent_type
-               agent
-               stochastic_class_rhs
-      )
-      (error, stochastic_class_rhs)
-      creation
+	  | Some Cckappa_sig.Unknown_agent _ 
+          | Some Cckappa_sig.Ghost -> error, store_result
+	  | Some Cckappa_sig.Dead_agent (agent,_,_,_) 
+          | Some Cckappa_sig.Agent agent ->
+            let error, site_list = 
+              Cckappa_sig.Site_map_and_set.Map.fold
+                (fun site _ (error, current_list) ->
+                  let site_list = site :: current_list in
+                  error, site_list
+                ) agent.Cckappa_sig.agent_interface (error, [])
+            in
+            let error, old_list =
+              match AgentMap.unsafe_get parameter error agent_type store_result with
+              | error, None -> error, []
+              | error, Some l -> error, l
+            in
+            let new_list = List.concat [site_list; old_list] in
+            let error, store_result =
+              AgentMap.set
+                parameter
+                error
+                agent_type
+                new_list
+                store_result
+            in
+            error, store_result
+      )(error, store_result) rule.Cckappa_sig.actions.Cckappa_sig.creation
   in
   (*compute the stochastic class *)
   let error, stochastic_classes =
     Int_storage.Quick_Nearly_inf_Imperatif.fold
       parameter error
-      (fun parameter error agent_id agent stochastic_class ->
+      (fun parameter error agent_id agent store_result ->
        match agent with
-       | Cckappa_sig.Unknown_agent _  | Cckappa_sig.Ghost -> error, stochastic_class
-       | Cckappa_sig.Dead_agent (agent,_,_,_) | Cckappa_sig.Agent agent ->
+       | Cckappa_sig.Unknown_agent _  
+       | Cckappa_sig.Ghost -> error, store_result
+       | Cckappa_sig.Dead_agent (agent,_,_,_) 
+       | Cckappa_sig.Agent agent ->
 	  let agent_type = agent.Cckappa_sig.agent_name in
-          get_sites_list
-            parameter
-            error
-            agent_type
-            agent
-            stochastic_class
-      )
-      viewslhs
-      stochastic_class_rhs
+          let error, site_list =
+            Cckappa_sig.Site_map_and_set.Map.fold
+              (fun site _ (error, current_list) ->
+                let site_list = site :: current_list in
+                error, site_list
+              ) agent.Cckappa_sig.agent_interface (error, [])
+          in
+          let error, old_list =
+            match AgentMap.unsafe_get parameter error agent_type store_result with
+            | error, None -> error, []
+            | error, Some l -> error, l
+          in
+          let new_list = List.concat [site_list; old_list] in
+          let error, store_result =
+            AgentMap.set
+              parameter
+              error
+              agent_type
+              new_list
+              store_result
+          in
+          error, store_result            
+      ) rule.Cckappa_sig.rule_lhs.Cckappa_sig.views stochastic_class_rhs
   in
   error,
   {
@@ -152,51 +143,53 @@ let get_nsites parameter error key handler =
   in nsites + 1
 
 (*------------------------------------------------------------------------------*)
-(*the initial state of stochastic classes*)
-
-let empty_stochastic_classes parameter error handler =
-  let n_agents = handler.Cckappa_sig.nagents in
-  let error, empty_stochastic = 
-    Int_storage.Quick_Nearly_inf_Imperatif.create parameter error n_agents in
-  error, 
-  {
-    stochastic_class = empty_stochastic;
-  }
-  
-(*------------------------------------------------------------------------------*)
 (*RULES*)
 
 let scan_rule_set parameter error handler rules =
-  let error, empty_stochastic_type = empty_stochastic_classes parameter error handler in
-  let error, init_stochastic = Int_storage.Quick_Nearly_inf_Imperatif.create
-    parameter error 0 in
+  let nagents = handler.Cckappa_sig.nagents in
+  let error, init_stochastic_class = AgentMap.create parameter error nagents in
+  let error, init                  = AgentMap.create parameter error 0 in
+  let init_stochastic =
+    {
+      stochastic_class = init_stochastic_class
+    }
+  in
+  (*------------------------------------------------------------------------------*)
   let error, stochastic_class =
     Int_storage.Nearly_inf_Imperatif.fold
       parameter error
       (fun parameter error rule_id rule stochastic_class ->
+       (*------------------------------------------------------------------------*)
        let error, map =
          scan_rule
            parameter
            error
            handler
            rule.Cckappa_sig.e_rule_c_rule
-           empty_stochastic_type
+           init_stochastic
        in
-       let error, result =
-         Int_storage.Quick_Nearly_inf_Imperatif.fold
+       (*------------------------------------------------------------------------*)
+       let error, store_result =
+         AgentMap.fold
            parameter error
-           (fun parameter error id sites_list store_union ->
-            let nsites = get_nsites parameter error id handler in
+           (fun parameter error agent_type sites_list store_result ->
+            let nsites = 
+              get_nsites
+                parameter 
+                error 
+                agent_type
+                handler 
+            in
             match sites_list with
-            | [] | [_] -> error, store_union
+            | [] | [_] -> error, store_result
             | _ ->
               (*getting an array in the old_result*)
                let error, get_array =
-                 Int_storage.Quick_Nearly_inf_Imperatif.unsafe_get
+                 AgentMap.unsafe_get
                    parameter
                    error
-                   id
-                   store_union
+                   agent_type
+                   store_result
                in
                let array =
                  match get_array with
@@ -212,53 +205,80 @@ let scan_rule_set parameter error handler rules =
                    sites_list
                in
                (*store*)
-               let error, result =
-                 Int_storage.Quick_Nearly_inf_Imperatif.set
+               let error, store_result =
+                 AgentMap.set
                    parameter
                    error
-                   id
+                   agent_type
                    union_array
-                   store_union
-               in error, result
-           )
-           map.stochastic_class
-           stochastic_class
-       in error, result
-      ) rules init_stochastic
+                   store_result
+               in error, store_result
+           ) map.stochastic_class stochastic_class
+       in error, store_result
+      ) rules init
   in error, stochastic_class
 
 (************************************************************************************)
 (*PRINT*)
 
-let sprintf_array a =
+let sprintf_array parameter error handler agent_type array =
   let acc = ref "[|" in
-  Array.iteri (fun i x ->
-      acc := !acc ^
-             if i <> 0
-             then Printf.sprintf "; %d" x
-             else Printf.sprintf "%d" x
-    ) a;
+  Array.iteri (fun i site_type ->
+    let error, site_string = 
+      try
+        Handler.string_of_site parameter error handler agent_type site_type
+      with
+        _ -> warn parameter error (Some "line 231") Exit (string_of_int site_type)
+    in
+    acc := !acc ^
+      if i <> 0
+      then Printf.sprintf "; %d:%s" site_type site_string
+      else Printf.sprintf "%d:%s" site_type site_string
+  ) array;
   !acc ^ "|]"
-           
-let print_array a =
-  let output = sprintf_array a in
+  
+let print_array parameter error handler agent_type array =
+  let output = sprintf_array parameter error handler agent_type array in
   Printf.fprintf stdout "%s\n" output
-          
-let print_stochastic_class parameter error result =
-  Int_storage.Quick_Nearly_inf_Imperatif.print
+
+let print_stochastic_class parameter error handler result =
+  Int_storage.Quick_Nearly_inf_Imperatif.iter
+    parameter
     error
-    (fun error parameter a ->
-     let _ =
-       print_string "site_type:";
-       print_array a
-     in
-     error) parameter result
+    (fun parameter error agent_type array_site_type ->
+      let _ =
+        if Remanent_parameters.get_do_stochastic_flow_of_information parameter
+        then
+          let parameter =
+            Remanent_parameters.update_prefix parameter ""
+          in
+          begin
+            if Remanent_parameters.get_trace parameter
+            then
+              let _ =
+                let error, agent_string =
+                  try
+                    Handler.string_of_agent parameter error handler agent_type
+                  with
+                    _ -> warn parameter error (Some "line 263") Exit 
+                      (string_of_int agent_type)
+                in
+                Printf.fprintf stdout "agent_type:%i:%s\n" agent_type agent_string
+              in
+              print_string "site_type:";
+              print_array parameter error handler agent_type array_site_type
+            else ()
+          end
+      in
+      error)
+    result
 
 (************************************************************************************)     
 (*MAIN*)
    
 let stochastic_classes parameter error handler cc_compil =
-  let parameter =  Remanent_parameters.update_prefix parameter "agent_type:" in 
-  let error, result = scan_rule_set parameter error handler cc_compil.Cckappa_sig.rules in
-  let _ = print_stochastic_class parameter error result in
+  let error, result = 
+    scan_rule_set parameter error handler cc_compil.Cckappa_sig.rules
+  in
+  let _ = print_stochastic_class parameter error handler result in
   error, result

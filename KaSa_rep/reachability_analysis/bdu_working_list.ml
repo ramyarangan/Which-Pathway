@@ -35,8 +35,6 @@ let trace = false
   will also add 'r1' into a working list. (lhs of D is Ghost. Rhs of A is Ghost)
 *)
 
-(*CHECK ME*)
-
 let collect_wl_creation parameter error rule_id rule store_result =
   (*add rule_id that has no lhs into a working list*)
   let error, wl_creation =

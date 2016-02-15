@@ -18,14 +18,16 @@ val set_cflow : string -> unit
 val with_cflow_file :
   string list -> string -> (Format.formatter -> unit) -> unit
 
-val open_profiling : unit -> out_channel
+val open_tasks_profiling : unit -> out_channel
+val open_branch_and_cut_engine_profiling: unit -> out_channel
 
 val set_flux : string -> int -> unit
 val with_flux : string -> (Format.formatter -> unit) -> unit
 
-val open_snapshot : string -> int -> string -> out_channel
 val with_snapshot :
   string -> int -> string -> (Format.formatter -> unit) -> unit
+
+val with_unary_dist : int -> (Format.formatter -> unit) -> unit
 
 val set_influence : string -> unit
 val set_up_influence : unit -> unit
@@ -34,6 +36,4 @@ val with_influence : (Format.formatter -> unit) -> unit
 val set_ccFile : string -> unit
 val with_ccFile : (Format.formatter -> unit) -> unit
 
-val add_out_desc : out_channel -> unit
-val close_out_desc : out_channel -> unit
 val close_all_out_desc : unit -> unit

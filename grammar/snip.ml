@@ -32,27 +32,30 @@ let find_implicit_infos sigs contact_map ags =
     else
      match ports.(i) with
      | (Ast.LNK_TYPE (p,a),_),s ->
-	List.map (fun (free_id,ports,ags,cor) ->
-		  let () =
-		    ports.(i) <-
-		      (Location.dummy_annot (Ast.LNK_VALUE (free_id,(p,a))),s) in
-		  (succ free_id, ports, ags, (free_id,(a,p),or_ty,new_switch s)::cor))
-		 (aux_one ag_tail ty_id (max_s max_id s) ports (succ i))
+	List.map
+	  (fun (free_id,ports,ags,cor) ->
+	   let () =
+	     ports.(i) <-
+	       (Location.dummy_annot (Ast.LNK_VALUE (free_id,(p,a))),s) in
+	   (succ free_id, ports, ags, (free_id,(p,a),or_ty,new_switch s)::cor))
+	  (aux_one ag_tail ty_id (max_s max_id s) ports (succ i))
      | (Ast.LNK_SOME,_), s ->
 	Tools.list_map_flatten
 	  (fun (free_id,ports,ags,cor) ->
-	   List.map (fun x ->
-		     let ports' = Array.copy ports in
-		     let () =
-		       ports'.(i) <-
-			 (Location.dummy_annot (Ast.LNK_VALUE (free_id,x)),s) in
-		     (succ free_id, ports', ags, (free_id,x,or_ty,new_switch s)::cor))
-		    (ports_from_contact_map sigs contact_map ty_id i))
+	   List.map
+	     (fun (a,p) ->
+	      let ports' = Array.copy ports in
+	      let () =
+		ports'.(i) <-
+		  (Location.dummy_annot (Ast.LNK_VALUE (free_id,(p,a))),s) in
+	      (succ free_id, ports', ags,
+	       (free_id,(p,a),or_ty,new_switch s)::cor))
+	     (ports_from_contact_map sigs contact_map ty_id i))
 	  (aux_one ag_tail ty_id (max_s max_id s) ports (succ i))
      | (Ast.LNK_VALUE (j,_),_),s ->
-	  aux_one ag_tail ty_id (max_s (max j max_id) s) ports (succ i)
+	aux_one ag_tail ty_id (max_s (max j max_id) s) ports (succ i)
      | (Ast.FREE, pos), LKappa.Maintained ->
-	let () = (* Do not make test is being free is the only possibility *)
+	let () = (* Do not make test if being free is the only possibility *)
 	  match ports_from_contact_map sigs contact_map ty_id i with
 	  | [] -> ports.(i) <- (Ast.LNK_ANY,pos), LKappa.Maintained
 	  | _ :: _ -> () in
@@ -68,20 +71,22 @@ let find_implicit_infos sigs contact_map ags =
 	   (* Do not make test is being free is the only possibility *)
 	   let () = ports.(i) <- (Ast.LNK_ANY,pos), LKappa.Maintained in
 	   aux_one ag_tail ty_id max_id ports (succ i)
-	| pfcm ->
-	   Tools.list_map_flatten
+	| _pfcm ->
+	   (*Tools.list_map_flatten
 	     (fun (free_id,ports,ags,cor) ->
 	      let () = ports.(i) <-
 			 (Location.dummy_annot Ast.FREE,
 			  if s = LKappa.Freed then LKappa.Maintained else s) in
 	      (free_id, ports, ags, cor) ::
-		List.map (fun x ->
-			  let ports' = Array.copy ports in
-			  let () =
-			    ports'.(i) <-
-			      (Location.dummy_annot (Ast.LNK_VALUE (free_id,x)),s) in
-			  (succ free_id, ports', ags, (free_id,x,or_ty,new_switch s)::cor))
-			 pfcm)
+		List.map
+		  (fun (a,p) ->
+		   let ports' = Array.copy ports in
+		   let () =
+		     ports'.(i) <- (Location.dummy_annot
+				      (Ast.LNK_VALUE (free_id,(p,a))),s) in
+		   (succ free_id, ports', ags,
+		    (free_id,(p,a),or_ty,new_switch s)::cor))
+		  pfcm)*)
 	     (aux_one ag_tail ty_id (max_s max_id s) ports (succ i))
   and aux_ags max_id = function
     | [] -> [succ max_id,[],[]]
@@ -146,7 +151,7 @@ let new_agent_with_one_link sigs ty_id port link dst_info switch =
   { LKappa.ra_type = ty_id; LKappa.ra_ports = ports; LKappa.ra_ints = internals;
     LKappa.ra_erased = false; LKappa.ra_syntax = None;}
 
-let rec add_one_implicit_info sigs id ((ty_id,port),dst_info,s as info) todo =
+let rec add_one_implicit_info sigs id ((port,ty_id),dst_info,s as info) todo =
   function
   | [] -> [[new_agent_with_one_link sigs ty_id port id dst_info s],todo]
   | ag :: ag_tail ->
@@ -178,24 +183,7 @@ let is_linked_on i ag =
   Tools.array_filter (is_linked_on_port (-1) i) ag.LKappa.ra_ports <> []
 
 let define_full_transformation
-      sigs (removed,added as transf) links_transf place site dst switch =
-  let cand = match dst with
-    | None -> Primitives.Transformation.Freed (place,site)
-    | Some (dst,_) -> Primitives.Transformation.Linked ((place,site),dst) in
-  let cands l = match dst with
-    | None -> Primitives.Transformation.Freed (place,site)::l
-    | Some (dst,pos) ->
-       let sort = Agent_place.get_type place in
-       let () =
-	 ExceptionDefn.warning
-	   ~pos
-	   (fun f ->
-	    Format.fprintf
-	      f "rule induces a link permutation on site '%a' of agent '%a'"
-	      (Signature.print_site sigs sort) site
-	      (Signature.print_agent sigs) sort) in
-       Primitives.Transformation.Linked ((place,site),dst) ::
-	 Primitives.Transformation.Linked (dst,(place,site)) :: l in
+      sigs (removed,added as transf) links_transf place site (cand,cand_pos) switch =
   match switch with
   | LKappa.Freed ->
      ((cand::removed, (Primitives.Transformation.Freed(place,site)::added)),
@@ -207,34 +195,52 @@ let define_full_transformation
   | LKappa.Linked (i,pos) ->
      match IntMap.find_option i links_transf with
      | None ->
+	let () =
+	  match cand_pos with
+	  | None -> ()
+	  | Some pos ->
+	     let sort = Agent_place.get_type place in
+	     ExceptionDefn.warning
+	       ~pos
+	       (fun f ->
+		Format.fprintf
+		  f "rule induces a link permutation on site '%a' of agent '%a'"
+		  (Signature.print_site sigs sort) site
+		  (Signature.print_agent sigs) sort) in
 	let links_transf' =
 	  IntMap.add
-	    i ((place,site),Tools.option_map (fun _ -> pos) dst) links_transf in
-       ((cands removed,added),links_transf')
+	    i ((place,site),Tools.option_map (fun _ -> pos) cand_pos)
+	    links_transf in
+       ((cand::removed,added),links_transf')
      | Some ((place',site' as dst'),risk) ->
-       let links_transf' = IntMap.remove i links_transf in
-       match dst with
-       | Some (dst,_) when dst = dst' -> assert false
-       | Some (_) ->
-	  let () =
-	    match risk with
-	    | Some _ ->
-	       let sort = Agent_place.get_type place' in
+	let links_transf' = IntMap.remove i links_transf in
+	let () =
+	  match cand_pos with
+	  | None -> ()
+	  | Some pos' ->
+	     let sort = Agent_place.get_type place in
+	     let () =
 	       ExceptionDefn.warning
-		 ~pos
+		 ~pos:pos'
 		 (fun f ->
 		  Format.fprintf
 		    f "rule induces a link permutation on site '%a' of agent '%a'"
-		    (Signature.print_site sigs sort) site'
-		    (Signature.print_agent sigs) sort)
-	    | None -> () in
-	  ((cands removed,
-	    Primitives.Transformation.Linked((place,site),dst')::added),
-	   links_transf')
-       | None ->
-	  ((cands removed,
-	    Primitives.Transformation.Linked((place,site),dst')::added),
-	   links_transf')
+		    (Signature.print_site sigs sort) site
+		    (Signature.print_agent sigs) sort) in
+	     match risk with
+	     | Some _ ->
+		let sort = Agent_place.get_type place' in
+		ExceptionDefn.warning
+		  ~pos
+		  (fun f ->
+		   Format.fprintf
+		     f "rule induces a link permutation on site '%a' of agent '%a'"
+		     (Signature.print_site sigs sort) site'
+		     (Signature.print_agent sigs) sort)
+	     | None -> () in
+	((cand::removed,
+	  Primitives.Transformation.Linked((place,site),dst')::added),
+	 links_transf')
 
 let define_positive_transformation
       sigs (removed,added as transf) links_transf place site switch =
@@ -402,16 +408,22 @@ let rec add_agents_in_cc sigs id wk registered_links (removed,added as transf)
 	      Connected_component.new_internal_state wk (node,site_id) i
 	 in
 	 match ag.LKappa.ra_ports.(site_id) with
-	 | (Ast.LNK_ANY,_), LKappa.Maintained ->
-	    handle_ports wk' r_l c_l transf l_t re acc (succ site_id)
+	 | (Ast.LNK_ANY,pos), s ->
+	    let transf',l_t' =
+	      define_full_transformation
+		sigs transf l_t place site_id
+		(Primitives.Transformation.NegativeWhatEver
+		   (place,site_id),Some pos) s in
+	    handle_ports wk' r_l c_l transf' l_t' re acc (succ site_id)
 	 | (Ast.FREE,_), s ->
 	    let wk'' = Connected_component.new_free wk' (node,site_id) in
 	    let transf',l_t' =
-	      define_full_transformation sigs transf l_t place site_id None s in
+	      define_full_transformation
+		sigs transf l_t place site_id
+		(Primitives.Transformation.Freed (place,site_id),None) s in
 	    handle_ports
 	      wk'' r_l c_l transf' l_t' re acc (succ site_id)
-	 | ((Ast.LNK_SOME | Ast.LNK_TYPE _),_),_
-	 | ((Ast.LNK_ANY,_), ( LKappa.Erased | LKappa.Linked _ | LKappa.Freed))->
+	 | ((Ast.LNK_SOME | Ast.LNK_TYPE _),_),_ ->
 	    raise (ExceptionDefn.Internal_Error
 		     (Location.dummy_annot
 			"Try to create the connected components of an ambiguous mixture."))
@@ -426,7 +438,9 @@ let rec add_agents_in_cc sigs id wk registered_links (removed,added as transf)
 		  c_l in
 	      let transf',l_t' =
 		define_full_transformation
-		  sigs transf l_t place site_id (Some (dst_place,pos)) s in
+		  sigs transf l_t place site_id
+		  (Primitives.Transformation.Linked
+		     ((place,site_id),(dst_place)),Some pos) s in
 	      handle_ports wk'' (IntMap.remove i r_l) c_l' transf'
 			   l_t' re acc (succ site_id)
 	    | None ->
@@ -443,15 +457,17 @@ let rec add_agents_in_cc sigs id wk registered_links (removed,added as transf)
 		    let transf',l_t' =
 		      define_full_transformation
 			sigs transf l_t place site_id
-			(Some ((place,site_id'),pos)) s in
+			(Primitives.Transformation.Linked
+			   ((place,site_id),(place,site_id')),Some pos) s in
 		    let transf'',l_t'' =
 		      define_full_transformation
 			sigs transf' l_t' place site_id'
-			(Some ((place,site_id),pos)) s in
+			(Primitives.Transformation.Linked
+			   ((place,site_id'),(place,site_id)),Some pos) s in
 		    let c_l' =
 		      IntMap.add
-			i (Instantiation.Is_Bound_to ((place,site_id),(place,site_id')))
-			c_l in
+			i (Instantiation.Is_Bound_to
+			     ((place,site_id),(place,site_id'))) c_l in
 		    handle_ports
 		      wk'' r_l c_l' transf'' l_t'' re acc (succ site_id)
 		 | _ :: _ ->
@@ -536,7 +552,7 @@ let incr_origin = function
   | ( Operator.ALG _ | Operator.PERT _  as x) -> x
   | Operator.RULE i -> Operator.RULE (succ i)
 
-let connected_components_of_mixture created (env,origin) mix =
+let connected_components_of_mixture created mix (env,origin) =
   let sigs = Connected_component.Env.sigs env in
   let rec aux env transformations instantiations links_transf acc id = function
     | [] ->
@@ -552,6 +568,7 @@ let connected_components_of_mixture created (env,origin) mix =
 		    | Primitives.Transformation.Linked (x,y) ->
 		       Instantiation.Bind (x,y) :: acs
 		    | (Primitives.Transformation.Freed _ |
+		       Primitives.Transformation.NegativeWhatEver _ |
 		       Primitives.Transformation.PositiveInternalized _ |
 		       Primitives.Transformation.NegativeInternalized _ |
 		       Primitives.Transformation.Agent _) -> acs)
@@ -560,9 +577,9 @@ let connected_components_of_mixture created (env,origin) mix =
        let actions'',transformations'' =
 	 complete_with_creation
 	   sigs transformations' links_transf [] actions' 0 created in
-       ((env,Tools.option_map incr_origin origin),
-	(origin,Tools.array_rev_of_list acc,
-	 (tests,(actions'',side_sites,side_effects)), transformations''))
+       ((origin,Tools.array_rev_of_list acc,
+	 (tests,(actions'',side_sites,side_effects)), transformations''),
+       (env,Tools.option_map incr_origin origin))
     | h :: t ->
        let wk = Connected_component.begin_new env in
        let (wk_out,(removed,added),l_t,event, remains) =
@@ -617,10 +634,10 @@ let connected_components_sum_of_ambiguous_rule
 				     (List.rev created))))
 		     all_mixs in
   Tools.list_fold_right_map (connected_components_of_mixture created)
-			    (env,origin) all_mixs
+			    all_mixs (env,origin)
 
 let connected_components_sum_of_ambiguous_mixture contact_map env ?origin mix =
-  let (cc_env,_),rules =
+  let rules,(cc_env,_) =
     connected_components_sum_of_ambiguous_rule
       contact_map env ?origin mix [] in
   (cc_env, List.map
