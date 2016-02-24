@@ -883,7 +883,8 @@ let check_story_embeds env state =
   match state.story_machinery with
   | None -> ()
   | Some (_, (_,steps)) ->
-      Match_stories.check_weak_story_embeds env steps 
+     (* Match_stories.check_weak_story_embeds env steps *)
+     Match_stories.match_stories_main ()
 
 let generate_stories logger env state =
   match state.story_machinery with

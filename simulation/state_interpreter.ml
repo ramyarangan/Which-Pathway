@@ -321,7 +321,7 @@ let finalize ~outputs form env counter graph state =
 	      (Fluxmap.get_flux_name e)) in
        outputs (Data.Flux (Fluxmap.stop_flux env counter e))) state.flux in
   let () = ExceptionDefn.flush_warning form in
-  (* let () = Rule_interpreter.check_story_embeds env graph in *)
+  let () = Rule_interpreter.check_story_embeds env graph in
   Rule_interpreter.generate_stories form env graph
 
 let go form counter f =

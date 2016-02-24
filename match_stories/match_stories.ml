@@ -13,6 +13,7 @@ open Printf
 module KI = Utilities.S.PH.B.PB.CI.Po.K
 module IntMap = Map.Make(struct type t = int let compare = compare end)
 module IntPairMap = Map.Make(struct type t = (int * int) let compare = compare end)
+module IntSet = Set.Make(struct type t = int let compare = compare end)
 module IntPairSet = Set.Make(struct type t = (int * int) let compare = compare end)
 
 (****************************************************************************
@@ -99,14 +100,122 @@ type story_t = (adjacency_list_t * adjacency_list_t) * (StoryEvent.t list)
 (************************************************************************** 
  * Obtain marshaled story from file.
  *)
-(* let get_stories_from_file () = 
+let get_story_event trace id next_story_id = 
+	let get_id_story_event (count, event) step = 
+ 		match (count, event) with
+ 		| (this_id, None) when this_id = id -> 
+ 			let (rule_id, (instantiation, _)) = step in
+ 			let story_event = (next_story_id, (rule_id, instantiation)) in
+ 			(count + 1, Some story_event)
+ 		| _ -> (count + 1, event)
+ 	in
+	let (_, story_event) = 
+		List.fold_left get_id_story_event (1, None) trace
+	in story_event
+
+let get_story_event_change_map trace id map =
+	let option_event = 
+		if IntMap.mem id map then Some (IntMap.find id map)
+		else get_story_event trace id id 
+	in
+	match option_event with 
+	| None -> (
+		None
+	)
+	| Some event -> (
+		let new_map = IntMap.add id event map in
+		Some (event, new_map)
+	)
+
+let add_all_edges for_list back_list all_story_events links trace forward = 
+	let fill_adj_list cur_key cur_val (for_list, back_list, all_story_events) = 
+		let option_event_map_pair = 
+			get_story_event_change_map trace cur_key all_story_events
+		in
+		match option_event_map_pair with
+		| None -> (for_list, back_list, all_story_events)
+		| Some (key_event, all_story_events) -> (
+			let add_edges next_val (for_list, back_list, all_story_events) = 
+				let option_event_map_pair = 
+					get_story_event_change_map trace next_val all_story_events
+				in
+				match option_event_map_pair with
+				| None -> (for_list, back_list, all_story_events)
+				| Some (next_event, all_story_events) -> (
+					let for_list = 
+						if forward then map_add_val_to_list for_list cur_key next_event
+						else map_add_val_to_list for_list next_val key_event
+					in
+					let back_list = 
+						if forward then map_add_val_to_list back_list next_val key_event
+						else map_add_val_to_list back_list cur_key next_event
+					in
+					(for_list, back_list, all_story_events)
+				)
+			in
+			Mods.IntSet.fold add_edges cur_val (for_list, back_list, all_story_events)
+		)
+	in
+	Mods.IntMap.fold fill_adj_list links (for_list, back_list, all_story_events)
+
+let find_start_nodes for_list back_list all_story_events backward = 
+	let has_edges = if backward then back_list else for_list in
+	let has_no_edges = if backward then for_list else back_list in
+	let add_key cur_key cur_val cur_set = IntSet.add cur_key cur_set in
+	let possible_start_nodes = IntMap.fold add_key has_edges IntSet.empty in
+	let add_if_no_edges node cur_list = 
+		if (IntMap.mem node has_no_edges) then cur_list
+		else (
+			printf "Start node: %d \n" node;
+			cur_list @ [IntMap.find node all_story_events]
+		)
+	in
+	IntSet.fold add_if_no_edges possible_start_nodes []
+
+let get_stories_from_file backward = 
 	let trace_grid_list =	Kappa_files.from_marshalized_story 
 		(fun d -> Marshal.from_channel d) in
 	let convert_to_story (trace, enriched_grid) = 
-		
+		let trace = Utilities.get_pretrace_of_trace trace in
+		let filter_refined_step cur_list refined_step = 
+			match refined_step with 
+			| KI.Event (Causal.RULE (rule), inst, sim_info) -> (
+				cur_list @ [(rule, (inst, sim_info))]
+			)
+			| KI.Obs (Causal.OBS (rule), _, _) -> (
+				printf "Obs id from trace: %s\n" rule ;
+				cur_list
+			)
+			| _ -> cur_list
+		in
+		let trace = List.fold_left filter_refined_step [] trace in
+		printf "Trace length: %d\n" (List.length trace);
+		let config = enriched_grid.Causal.config in
+		let causal_list = config.Causal.prec_1 in
+		let prec_list = config.Causal.conflict in
+		let (for_list, back_list, all_story_events) = 
+			add_all_edges IntMap.empty IntMap.empty IntMap.empty causal_list trace false
+		in
+		let (for_list, back_list, all_story_events) = 
+			add_all_edges for_list back_list all_story_events prec_list trace false
+		in
+		let start_nodes = find_start_nodes for_list back_list all_story_events backward in
+		((for_list, back_list), start_nodes)
 	in
 	List.map convert_to_story trace_grid_list
-*) 
+
+let print_story_info story = 
+	match story with 
+	| ((_,_),start_nodes) -> 
+		(printf "Story with %d start nodes\n" (List.length start_nodes))
+
+let match_stories_main () = 
+	if (!Parameter.matchStory) then (
+		let all_stories = get_stories_from_file true in
+		let _ = List.map print_story_info all_stories in
+		()
+	)
+
 (**************************************************************************
 * Create test story for weakly compressed story matching algorithm.
 * Eventually we will read this from user input depending on the story 
