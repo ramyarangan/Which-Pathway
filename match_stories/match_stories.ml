@@ -796,12 +796,12 @@ let find_rule_application mapping trace_inst potential_abstract =
 	if ((List.length matchings) <> 0) then Some matchings
 	else None
 
-let update_states_list s step_id rule (state_list, all_done) match_info = 
+let update_states_list s step_id rule start_state (state_list, all_done) match_info = 
 	if (all_done) then (state_list, all_done) 
 	else (
 		let ((forward_edges, backward_edges), _) = s in
 		let (match_loc, match_event, new_mapping) = match_info in
-		let (wq, result_map, mapping, is_done) = List.hd state_list in
+		let (wq, result_map, mapping, is_done) = start_state in
 		let (story_event_id, (rule_id, story_inst)) = match_event in
 		(* Update result set with new mapping *)
 		let new_result_map = IntMap.add story_event_id step_id result_map in
@@ -829,7 +829,7 @@ let update_states_list s step_id rule (state_list, all_done) match_info =
 		(state_list @ [(new_wq, new_result_map, new_mapping, is_done)], is_done)
 	)
 
-let step_state_strong_algorithm s mark_step (states_list, all_is_done) (state) = 
+let step_state_strong_algorithm s mark_step do_greedy (states_list, all_is_done) (state) = 
 	if all_is_done then (states_list, all_is_done)
 	else 
 		let (step_id, step) = mark_step in
@@ -847,10 +847,14 @@ let step_state_strong_algorithm s mark_step (states_list, all_is_done) (state) =
 				match match_option with
 				| Some match_infos -> (
 					printf "Found potential matches for story rule: %d, step id %d\n" rule step_id ;
-					let (new_states, all_is_done) = 
-						List.fold_left (update_states_list s step_id rule) ([state], false) match_infos
-					in 
-					(states_list @ new_states, all_is_done)
+					let get_new_states start_list = 
+						List.fold_left (update_states_list s step_id rule state) (start_list, false) match_infos
+					in
+					if (do_greedy) then 
+						let (new_states, all_is_done) = get_new_states [] in 
+						(states_list @ new_states, all_is_done)
+					else let (new_states, all_is_done) = get_new_states [state] in
+						(states_list @ new_states, all_is_done)
 				)
 				| None -> (states_list @ [state], all_is_done)  (* No matching instantiation *)
 			)
@@ -864,19 +868,20 @@ let step_state_strong_algorithm s mark_step (states_list, all_is_done) (state) =
  * mapping based on the current trace step mark_step, and returning the 
  * new set of possible states of the algorithm.  
  *)
-let step_states_strong_algorithm s (states_list, all_is_done) mark_step = 
+let step_states_strong_algorithm s do_greedy (states_list, all_is_done) mark_step = 
 	if all_is_done then (states_list, all_is_done)
 	else 
 		let (step_id, step) = mark_step in
-		printf "Length of states list at step %d: %d\n" step_id (List.length states_list);
-		List.fold_left (step_state_strong_algorithm s mark_step) ([], false) states_list
+		(* printf "Length of states list at step %d: %d\n" step_id (List.length states_list); *)
+		List.fold_left (step_state_strong_algorithm s mark_step do_greedy) 
+			([], false) states_list
 
 (* 
  * The entry point for the strongly compressed story matching algorithm. 
  * Nondeterministically tries to assign events of the story to the trace, walking
  * through the trace and story backwards from the event of interest.
  *)
-let check_strong_story_embeds env steps s = 
+let check_strong_story_embeds env steps do_greedy s = 
 	let ((_, _), last_events) = s in
 	let wq = IntMap.empty in (* wq is map from rule id to story_events *)
 	let result_map = IntMap.empty in (* result_map maps story_event ids to trace id *)
@@ -885,7 +890,7 @@ let check_strong_story_embeds env steps s =
 	let wq = add_story_events_to_map wq last_events in (* Initialize wq *)
 	let param = [(wq, result_map, mapping, false)] in
 	let (_,is_done) = 
-		List.fold_left (step_states_strong_algorithm s) 
+		List.fold_left (step_states_strong_algorithm s do_greedy) 
 			(param, false) (mark_steps_with_id (List.rev steps))
 	in
 	if is_done then (printf "%s \n" "matches")
@@ -894,14 +899,14 @@ let check_strong_story_embeds env steps s =
 let match_stories_main env steps = 
 	if (!Parameter.matchStory) then (
 		let all_stories = get_stories_from_file true in
-		let _ = List.map (check_strong_story_embeds env steps) all_stories in 
+		let _ = List.map (check_strong_story_embeds env steps true) all_stories in 
 		()
 	)
 
 let match_story_test env steps = 
 	let s_option = (create_toy_story env steps) in
 	match s_option with 
-	| Some s -> check_strong_story_embeds env steps s
+	| Some s -> check_strong_story_embeds env steps true s
 	| None -> (printf "%s" "could not load test story")  
 
 (***********************************************************************
