@@ -26,8 +26,12 @@ js/JaSim.js
 
 # doc
 *.log
+*.pdf
+*.ka
 *.aux
 *.out
+*.dat
+*.dot
 man/KaSim_manual.pdf
 man/KaSim_manual.bbl
 man/KaSim_manual.blg

@@ -25,6 +25,14 @@ let map_add_val_to_list map key v =
 			IntMap.add key (val_list @ [v]) map
 	else IntMap.add key [v] map
 
+let map_add_unique_val_to_list map key v = 
+	if (IntMap.mem key map) then
+		let val_list = IntMap.find key map in
+			if not (List.exists (fun k -> k = v) val_list) 
+			then IntMap.add key (val_list @ [v]) map
+			else map
+	else IntMap.add key [v] map
+
 let map_rem_head_from_list map key = 
 	if IntMap.mem key map then
 		let val_list = IntMap.find key map in 
@@ -143,12 +151,12 @@ let add_all_edges for_list back_list all_story_events links trace forward =
 				| None -> (for_list, back_list, all_story_events)
 				| Some (next_event, all_story_events) -> (
 					let for_list = 
-						if forward then map_add_val_to_list for_list cur_key next_event
-						else map_add_val_to_list for_list next_val key_event
+						if forward then map_add_unique_val_to_list for_list cur_key next_event
+						else map_add_unique_val_to_list for_list next_val key_event
 					in
 					let back_list = 
-						if forward then map_add_val_to_list back_list next_val key_event
-						else map_add_val_to_list back_list cur_key next_event
+						if forward then map_add_unique_val_to_list back_list next_val key_event
+						else map_add_unique_val_to_list back_list cur_key next_event
 					in
 					(for_list, back_list, all_story_events)
 				)
@@ -178,6 +186,7 @@ let get_stories_from_file backward =
 	let convert_to_story (trace, enriched_grid) = 
 		let trace = Utilities.get_pretrace_of_trace trace in
 		let filter_refined_step cur_list refined_step = 
+		  Format.eprintf "@[<v>%a@]" (Pp.list Pp.space KI.print_refined_step) [refined_step] ;
 			match refined_step with 
 			| KI.Event (Causal.RULE (rule), inst, sim_info) -> (
 				cur_list @ [(rule, (inst, sim_info))]
@@ -209,7 +218,7 @@ let print_story_info story =
 	| ((_,_),start_nodes) -> 
 		(printf "Story with %d start nodes\n" (List.length start_nodes))
 
-let match_stories_main () = 
+let print_story_main () = 
 	if (!Parameter.matchStory) then (
 		let all_stories = get_stories_from_file true in
 		let _ = List.map print_story_info all_stories in
@@ -275,62 +284,7 @@ let check_test_action_matches env first_event second_event =
 	  let filtered_tests = List.filter (filter_agents_by_match agent_list) tests in
 	  (List.length filtered_tests) <> 0
 	)
-(*
-let add_agent_id_to_test agent_name_map test = 
-	match test with 
-  | Instantiation.Is_Here (agent_id, agent_name) ->
-  	add_to_agent_name_id_map agent_name agent_id (Test test) agent_name_map
-  | Instantiation.Has_Internal (((agent_id, agent_name), _), _) ->
-  	add_to_agent_name_id_map agent_name agent_id (Test test) agent_name_map	  	
-  | Instantiation.Is_Free ((agent_id, agent_name), _) ->
-  	add_to_agent_name_id_map agent_name agent_id (Test test) agent_name_map
-  | Instantiation.Is_Bound ((agent_id, agent_name), _) ->
-  	add_to_agent_name_id_map agent_name agent_id (Test test) agent_name_map
-  | Instantiation.Has_Binding_type (((agent_id, agent_name), _), _) ->
-  	add_to_agent_name_id_map agent_name agent_id (Test test) agent_name_map
-  | Instantiation.Is_Bound_to (((id_1, name_1), _), ((id_2, name_2), _)) -> (
-  	let mapping = 
-  		add_to_agent_name_id_map name_1 id_1 (Test test) agent_name_map
-			in
-  	add_to_agent_name_id_map name_1 id_1 (Test test) mapping
-  )
 
-let add_agent_id_to_action agent_name_map action = 
-	match action with 
-	| Instantiation.Create ((agent_id, agent_name), _) ->
-  	add_to_agent_name_id_map agent_name agent_id (Action action) agent_name_map
-	| Instantiation.Mod_internal (((agent_id, agent_name), _), _) ->
-  	add_to_agent_name_id_map agent_name agent_id (Action action) agent_name_map
-	| Instantiation.Bind (((id_1, name_1), _), ((id_2, name_2), _)) -> (
-  	let mapping = 
-  		add_to_agent_name_id_map name_1 id_1 (Action action) agent_name_map
-			in
-  	add_to_agent_name_id_map name_1 id_1 (Action action) mapping
-  )
-	| Instantiation.Bind_to (((id_1, name_1), _), ((id_2, name_2), _)) -> (
-  	let mapping = 
-  		add_to_agent_name_id_map name_1 id_1 (Action action) agent_name_map
-			in
-  	add_to_agent_name_id_map name_1 id_1 (Action action) mapping
-  )
-	| Instantiation.Free ((agent_id, agent_name), _) ->
-  	add_to_agent_name_id_map agent_name agent_id (Action action) agent_name_map
-	| Instantiation.Remove (agent_id, agent_name) ->
-  	add_to_agent_name_id_map agent_name agent_id (Action action) agent_name_map 
-
-let scramble_ids env first_event second_event = 
-	let (_, (_, (tests_1, (actions_1, _, _)))) = first_event in
-	let (_, (_, (tests_2, (actions_2, _, _)))) = second_event in 
-	() *)
-
-(* Creates a toy story for simple.ka *)
-(* Here we show an example of creating a weakly compressed story for 
- * the set of rules outlined in simple.ka. 
- * We find the rule id corresponding to the events we would like to link, 
- * make sure that the instantiations of these rules are present in our
- * trace and correspond to the same agents, and finally create
- * the adjacency lists that specify a story. 
- *)
 let create_toy_story env steps = 
 	let get_rand_element l = List.nth l (Random.int (List.length l)) in
 	let map = find_all_applications env steps in
@@ -501,8 +455,8 @@ let add_agent_id_to_test agent_name_map test =
   | Instantiation.Is_Bound_to (((id_1, name_1), _), ((id_2, name_2), _)) -> (
   	let mapping = 
   		add_to_agent_name_id_map name_1 id_1 (Test test) agent_name_map
-			in
-  	add_to_agent_name_id_map name_1 id_1 (Test test) mapping
+		in
+  	add_to_agent_name_id_map name_2 id_2 (Test test) mapping
   )
 
 let add_agent_id_to_action agent_name_map action = 
@@ -514,14 +468,14 @@ let add_agent_id_to_action agent_name_map action =
 	| Instantiation.Bind (((id_1, name_1), _), ((id_2, name_2), _)) -> (
   	let mapping = 
   		add_to_agent_name_id_map name_1 id_1 (Action action) agent_name_map
-			in
-  	add_to_agent_name_id_map name_1 id_1 (Action action) mapping
+		in
+  	add_to_agent_name_id_map name_2 id_2 (Action action) mapping
   )
 	| Instantiation.Bind_to (((id_1, name_1), _), ((id_2, name_2), _)) -> (
   	let mapping = 
   		add_to_agent_name_id_map name_1 id_1 (Action action) agent_name_map
-			in
-  	add_to_agent_name_id_map name_1 id_1 (Action action) mapping
+		in
+  	add_to_agent_name_id_map name_2 id_2 (Action action) mapping
   )
 	| Instantiation.Free ((agent_id, agent_name), _) ->
   	add_to_agent_name_id_map agent_name agent_id (Action action) agent_name_map
@@ -541,6 +495,8 @@ let get_structs_for_concretization story_inst_list trace_inst_list =
 	let trace_map = make_agent_id_to_test_action trace_inst_list in
 	let add_agent_names agent_name agent_id_map cur_set = 
 		let add_agent_ids agent_id check_list cur_name_set = 
+			(* printf "Agent_name: %d Agent_id: %d Test/Action count: %d\n" 
+				agent_name agent_id (List.length check_list); *)
 			IntPairSet.add (agent_name, agent_id) cur_name_set
 	  in
 		IntMap.fold add_agent_ids agent_id_map cur_set 
@@ -548,6 +504,9 @@ let get_structs_for_concretization story_inst_list trace_inst_list =
 	let story_set =
 		IntMap.fold add_agent_names story_map IntPairSet.empty
 	in
+	(* let trace_set =
+		IntMap.fold add_agent_names trace_map IntPairSet.empty
+	in *)
 	(story_map, trace_map, story_set)
 
 
@@ -608,21 +567,38 @@ let pair_matches story_bind trace_bind agent_name story_id trace_id mapping =
 let check_match_test story_item trace_item story_agent_id trace_id mapping = 
 	let (agent_name, story_id) = story_agent_id in
 	match (story_item, trace_item) with 
-  | (Instantiation.Is_Here _, Instantiation.Is_Here _) -> true
+  | (Instantiation.Is_Here _, Instantiation.Is_Here _) -> ( 
+  		(* printf "Matched is_here\n"; *)
+  		true
+  	)
   | (Instantiation.Has_Internal (((_, _), story_site), story_state), 
    	 Instantiation.Has_Internal (((_, _), trace_site), trace_state)) ->
-   	 ((story_site = trace_site) && (story_state = trace_state))
+   	 let matched = ((story_site = trace_site) && (story_state = trace_state)) in
+   	 (* if (matched) then (printf "Matched has_internal\n") else (printf "Didn't match has_internal\n"); *)
+   	 matched
   | (Instantiation.Is_Free ((_, _), story_site), 
-  	Instantiation.Is_Free ((_, _), trace_site)) -> (story_site = trace_site)
+  	Instantiation.Is_Free ((_, _), trace_site)) -> 
+  	let matched = (story_site = trace_site) in
+  	(* if (matched) then (printf "Matched is_free\n") else (printf "Didn't match is_free\n"); *)
+  	matched
   | (Instantiation.Is_Bound ((_, _), story_site), 
-  	Instantiation.Is_Bound ((_, _), trace_site)) -> (story_site = trace_site)
+  	Instantiation.Is_Bound ((_, _), trace_site)) -> 
+  	let matched = (story_site = trace_site) in
+  	(* if (matched) then (printf "Matched is_bound\n") else (printf "Didnt match is_bound\n"); *)
+  	matched
   | (Instantiation.Has_Binding_type (((_, _), story_site), story_state),
   	Instantiation.Has_Binding_type (((_, _), trace_site), trace_state)) ->
-   	 ((story_site = trace_site) && (story_state = trace_state))
+   	let matched = ((story_site = trace_site) && (story_state = trace_state)) in
+   	(* if (matched) then (printf "Matched has_binding_type\n") 
+    else (printf "Didn't match has_binding_type\n"); *)
+    matched
   | (Instantiation.Is_Bound_to (story_bind_1, story_bind_2),
-  	 Instantiation.Is_Bound_to (trace_bind_1, trace_bind_2)) ->
-		pair_matches (story_bind_1, story_bind_2) (trace_bind_1, trace_bind_2) 
-			agent_name story_id trace_id mapping  
+  	 Instantiation.Is_Bound_to (trace_bind_1, trace_bind_2)) -> (
+		let matched =	pair_matches (story_bind_1, story_bind_2) (trace_bind_1, trace_bind_2) 
+			agent_name story_id trace_id mapping in 
+		(* if (matched) then (printf "Matched is_bound_to\n") else (printf "Didn't match is_bound_to\n");*)
+		matched 
+	)
   | (_, _) -> false
 
 let check_match_action story_item trace_item story_agent_id trace_id mapping = 
@@ -665,7 +641,9 @@ let story_trace_agent_id_matches story_agent_id trace_id structs mapping =
 	else let trace_agent_id_map = IntMap.find agent_name trace_map in 
 	if not (IntMap.mem trace_id trace_agent_id_map) then false
 	else let trace_items = IntMap.find trace_id trace_agent_id_map in
+	(* printf "Story items to match: %d\n" (List.length story_items) ; *)
 	let check_matches (trace_items_left, matches_so_far) next_story_item =
+		(* printf "Trace items left num: %d\n" (List.length trace_items_left); *)
 		if not matches_so_far then (trace_items_left, false)
 		else (
 			let find_match cur_match trace_item = 
@@ -679,14 +657,18 @@ let story_trace_agent_id_matches story_agent_id trace_id structs mapping =
 			let matched_trace_item = List.fold_left find_match None trace_items_left in
 			match matched_trace_item with
 			| Some matched_item -> 
+				(* printf ("Before filtering length: %d\n") (List.length trace_items_left); *)
 				let filtered_trace_list = 
 					List.filter (fun trace_item -> (trace_item <> matched_item)) trace_items_left
-				in (filtered_trace_list, true)
+				in 
+				(* printf ("After filtering length: %d\n") (List.length filtered_trace_list) ; *)
+				(filtered_trace_list, true)
 			| None -> (trace_items_left, false)
 		)
 	in
 	let (trace_items_left, matches) = 
 		List.fold_left check_matches (trace_items, true) story_items in
+	(* printf "Remaining trace items: %d Does match: %B \n" (List.length trace_items_left) matches ; *)
 	if (((List.length trace_items_left) = 0) && matches) then true 
 	else false
 
@@ -699,22 +681,25 @@ let find_concretization_helper story_inst_list trace_inst_list mapping =
 		let story_agent_ids = IntPairSet.remove story_agent_id story_agent_ids in
 		let new_structs = (story_name_to_ids, trace_name_to_ids, story_agent_ids) in
 		let (story_to_trace_id, trace_concretized) = mapping in
+		let (s_agent_name, s_agent_id) = story_agent_id in
 		if IntPairMap.mem story_agent_id story_to_trace_id then (
 			(* This agent id is already concretized *)
+			(* printf "Story agent %d %d is already concretized \n" s_agent_name s_agent_id; *)
 			let trace_id = IntPairMap.find story_agent_id story_to_trace_id in
 			if story_trace_agent_id_matches story_agent_id trace_id structs mapping
 			then find_concretization_rec new_structs mapping
 			else None
 		)
 		else (
-			let (s_agent_name, s_agent_id) = story_agent_id in
 		  if IntMap.mem s_agent_name trace_name_to_ids then (
 		  	let potential_trace_ids = IntMap.find s_agent_name trace_name_to_ids in
 				let check_id_match trace_id trace_val cur_mappings = 
 					(* Check that trace id not in concretization *)
 					if not (IntPairSet.mem (s_agent_name, trace_id) trace_concretized) then (
 						if story_trace_agent_id_matches story_agent_id trace_id 
-							structs mapping then (
+																												structs mapping then (
+							printf "Adding match between story (%d, %d) and trace (%d, %d) \n" 
+								s_agent_name s_agent_id s_agent_name trace_id;
 							let new_s_to_t = 
 								IntPairMap.add story_agent_id trace_id story_to_trace_id in
 							let new_t_concrete = 
@@ -773,14 +758,16 @@ let find_concretization mapping story_inst trace_inst =
 		let mappings_to_add = List.fold_left action_fun [] test_mappings in
 		Some mappings_to_add
 	)
-	| None -> None
-
+	| None -> (
+		(* printf "Found no concretization of story element \n "; *)
+		None
+	)
 (* Returns a list of (match_loc, match_event, mappings_to_add) plus an updated count
 * append to the current list of the matchings *)
 let find_abstract mapping trace_inst (matches_so_far, count) cur_abstract =
 	(* This count is used to figure out which rule application we've decided 
 	   to try to concretize *) 
-	let count = count + 1 in (* need to add recursive things here *)
+	let count = count + 1 in 
 	let (_, (_, story_inst)) = cur_abstract in
 	let option_mappings_to_add =
 	 	find_concretization mapping story_inst trace_inst in
@@ -793,7 +780,10 @@ let find_abstract mapping trace_inst (matches_so_far, count) cur_abstract =
 			List.fold_left add_one_mapping matches_so_far mappings_to_add in
 		(matches_so_far, count)
 	)
-	| None -> (matches_so_far, count)
+	| None -> (
+	 	(* printf "No added matches from this story node: %d \n" count; *)
+	 	(matches_so_far, count)
+	)
 
 (* Returns list of (match_loc, match_event, mappings_to_add)
  * mapping is a IntPairMap
@@ -824,10 +814,14 @@ let update_states_list s step_id rule (state_list, all_done) match_info =
 		(* Only add if all predecessors have been handled *)
 		let all_succ_handled ((story_event_id, _) : StoryEvent.t) = (
 			let succ_handled next_handled (succ_id, _) = 
-				(next_handled && (IntMap.mem succ_id result_map))
+				next_handled && (IntMap.mem succ_id new_result_map)
 			in
 			(* all events encountered in alg have backward edges *)
-			List.fold_left succ_handled true (IntMap.find story_event_id forward_edges)
+			let should_add = 
+				List.fold_left succ_handled true (IntMap.find story_event_id forward_edges)
+			in
+			if (should_add) then printf "Should add story node: %d\n" story_event_id ;
+			should_add
 		) in
 		let to_add = List.filter all_succ_handled might_add in
 		let new_wq = add_story_events_to_map new_wq to_add in
@@ -843,6 +837,8 @@ let step_state_strong_algorithm s mark_step (states_list, all_is_done) (state) =
 		| KI.Event (Causal.RULE (rule), trace_inst, _) -> (
 			let (wq, _, mapping, _) = state in
 			if IntMap.mem rule wq then (
+				(* printf "Processing new rule from story: %d, step id: %d \n" rule step_id ; *)
+				(* Format.eprintf "@[<v>%a@]" (Pp.list Pp.space KI.print_refined_step) [step] ; *)
 				(* See if any rule application is applicable given current mapping. Returns
 				* location of match in the list, updated mapping *)
 				let potential_abstract = IntMap.find rule wq in
@@ -850,7 +846,11 @@ let step_state_strong_algorithm s mark_step (states_list, all_is_done) (state) =
 					find_rule_application mapping trace_inst potential_abstract in
 				match match_option with
 				| Some match_infos -> (
-					List.fold_left (update_states_list s step_id rule) ([state], false) match_infos
+					printf "Found potential matches for story rule: %d, step id %d\n" rule step_id ;
+					let (new_states, all_is_done) = 
+						List.fold_left (update_states_list s step_id rule) ([state], false) match_infos
+					in 
+					(states_list @ new_states, all_is_done)
 				)
 				| None -> (states_list @ [state], all_is_done)  (* No matching instantiation *)
 			)
@@ -867,6 +867,8 @@ let step_state_strong_algorithm s mark_step (states_list, all_is_done) (state) =
 let step_states_strong_algorithm s (states_list, all_is_done) mark_step = 
 	if all_is_done then (states_list, all_is_done)
 	else 
+		let (step_id, step) = mark_step in
+		printf "Length of states list at step %d: %d\n" step_id (List.length states_list);
 		List.fold_left (step_state_strong_algorithm s mark_step) ([], false) states_list
 
 (* 
@@ -874,24 +876,32 @@ let step_states_strong_algorithm s (states_list, all_is_done) mark_step =
  * Nondeterministically tries to assign events of the story to the trace, walking
  * through the trace and story backwards from the event of interest.
  *)
-let check_strong_story_embeds env steps = 
-	let s_option = (create_toy_story env steps) in
-	match s_option with
-	| Some s -> (
-		let ((_, _), last_events) = s in
-		let wq = IntMap.empty in (* wq is map from rule id to story_events *)
-		let result_map = IntMap.empty in (* result_map maps story_event ids to trace id *)
-		let mapping = (IntPairMap.empty, IntPairSet.empty) in (* mapping captures the current concretization of agents *)
-		(* mapping stores this: {(Story's agent name, story's agent id): trace's agent id} *)
-		let wq = add_story_events_to_map wq last_events in (* Initialize wq *)
-		let param = [(wq, result_map, mapping, false)] in
-		let (_,is_done) = 
-			List.fold_left (step_states_strong_algorithm s) 
-				(param, false) (mark_steps_with_id (List.rev steps))
-		in
-		if is_done then (printf "%s " "matches")
-		else (printf "%s " "doesn't match") 
+let check_strong_story_embeds env steps s = 
+	let ((_, _), last_events) = s in
+	let wq = IntMap.empty in (* wq is map from rule id to story_events *)
+	let result_map = IntMap.empty in (* result_map maps story_event ids to trace id *)
+	let mapping = (IntPairMap.empty, IntPairSet.empty) in (* mapping captures the current concretization of agents *)
+	(* mapping stores this: {(Story's agent name, story's agent id): trace's agent id} *)
+	let wq = add_story_events_to_map wq last_events in (* Initialize wq *)
+	let param = [(wq, result_map, mapping, false)] in
+	let (_,is_done) = 
+		List.fold_left (step_states_strong_algorithm s) 
+			(param, false) (mark_steps_with_id (List.rev steps))
+	in
+	if is_done then (printf "%s \n" "matches")
+	else (printf "%s \n" "doesn't match") 
+
+let match_stories_main env steps = 
+	if (!Parameter.matchStory) then (
+		let all_stories = get_stories_from_file true in
+		let _ = List.map (check_strong_story_embeds env steps) all_stories in 
+		()
 	)
+
+let match_story_test env steps = 
+	let s_option = (create_toy_story env steps) in
+	match s_option with 
+	| Some s -> check_strong_story_embeds env steps s
 	| None -> (printf "%s" "could not load test story")  
 
 (***********************************************************************
