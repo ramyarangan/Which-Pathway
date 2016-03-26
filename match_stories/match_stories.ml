@@ -226,10 +226,8 @@ let print_story_main () =
 	)
 
 (**************************************************************************
-* Create test story for weakly compressed story matching algorithm.
-* Eventually we will read this from user input depending on the story 
-* the user is searching for. For now, there is no easy format for this
-* user input.
+	Get the closed set of all direct or indirect successors of all the events
+	in a rule name list. 
 *)
 let find_id_for_rule env name = 
 	let rule_id_list = Environment.nums_of_rule name env in
@@ -238,6 +236,66 @@ let find_id_for_rule env name =
 		None
 	)
 	else (Some ((List.hd rule_id_list) + 1))
+
+let get_ids env back_list rule_name_list = 
+	let get_id int_found rule_name = 
+		let get_id_one story_id val_list int_found = 
+			let check_rule_match int_found next_story_event = 
+				let rule_id_option = find_id_for_rule env rule_name in
+				match rule_id_option with
+				| Some rule_id -> (
+					let (s_id, (r_id, _)) = next_story_event in
+					if (r_id = rule_id) then (
+						let equals_s_id = List.filter (fun x -> x = s_id) int_found in
+						if ((List.length equals_s_id) = 0) then int_found @ [s_id]
+						else int_found
+					)
+					else int_found
+				)
+				| None -> int_found
+			in
+			List.fold_left check_rule_match int_found val_list
+		in
+		IntMap.fold get_id_one back_list int_found
+	in
+	List.fold_left get_id [] rule_name_list
+
+let get_valid_event_ids story_ids for_list = 
+	let rec update_list seen_so_far story_ids = 
+		let new_events = 
+			List.filter (fun x -> not (List.mem x seen_so_far)) story_ids
+		in
+		if ((List.length new_events) = 0) then story_ids
+		else (
+			let s_id = List.hd new_events in
+			let succ = IntMap.find s_id for_list in 
+			let new_story_ids = 
+				List.filter 
+					(fun x_all -> let (x,_) = x_all in (not (List.mem x story_ids))) 
+				succ
+			in
+			let get_sids cur_sids story_id = 
+				let (sid, _) = story_id in 
+				cur_sids @ [sid]
+			in
+			let new_story_ids = List.fold_left get_sids [] new_story_ids in
+			let new_story_ids = story_ids @ new_story_ids in
+			update_list (seen_so_far @ [s_id]) new_story_ids
+		)
+	in
+	update_list [] story_ids
+
+let get_valid_events env s rule_name_list = 
+	let ((for_list, back_list), _) = s in
+	let story_ids = get_ids env back_list rule_name_list in
+	get_valid_event_ids story_ids for_list
+
+(**************************************************************************
+* Create test story for weakly compressed story matching algorithm.
+* Eventually we will read this from user input depending on the story 
+* the user is searching for. For now, there is no easy format for this
+* user input.
+*)
 
 (* Creates a map linking a rule to all of its instantiations in a trace. 
  * This will be useful for creating a weakly compressed story for a particular
@@ -317,10 +375,15 @@ let create_toy_story env steps =
 (******************************************************************************
 * Algorithm for matching weakly compressed stories to a trace 
 *)
-let add_story_events_to_map map story_events = 
+let add_story_events_to_map map story_events ids_to_keep = 
 	let add_story_event_to_map map story_event = 
-		let (_, (rule, _)) = story_event in
-		map_add_val_to_list map rule story_event
+		let (s_id, (rule, _)) = story_event in
+		match ids_to_keep with 
+		| None -> map_add_val_to_list map rule story_event
+		| Some ids_list -> 
+			if (List.mem s_id ids_list) 
+			then map_add_val_to_list map rule story_event
+			else map
 	in 
 	List.fold_left add_story_event_to_map map story_events
 
@@ -367,7 +430,7 @@ let step_weak_algorithm (s : story_t) (wq, result_map, is_done) mark_step =
 						List.fold_left pred_handled true (IntMap.find story_event_id backward_edges)
 					) in
 					let to_add = List.filter all_pred_handled might_add in
-					let wq = add_story_events_to_map wq to_add in
+					let wq = add_story_events_to_map wq to_add None in
 					(wq, result_map, IntMap.is_empty wq)
 				)
 				else (wq, result_map, is_done)  (* No matching instantiation *)
@@ -386,7 +449,7 @@ let check_weak_story_embeds env steps =
 		let ((_, _), start_events) = s in
 		let wq = IntMap.empty in (* wq is map from rule id to story_events *)
 		let result_map = IntMap.empty in (* result_map maps story_event ids to trace id *)
-		let wq = add_story_events_to_map wq start_events in (* Initialize wq *)
+		let wq = add_story_events_to_map wq start_events None in (* Initialize wq *)
 		let param = (wq, result_map, false) in
 		let (_, _, is_done) = 
 			List.fold_left (step_weak_algorithm s) param (mark_steps_with_id steps)
@@ -796,7 +859,7 @@ let find_rule_application mapping trace_inst potential_abstract =
 	if ((List.length matchings) <> 0) then Some matchings
 	else None
 
-let update_states_list s step_id rule start_state (state_list, all_done) match_info = 
+let update_states_list s step_id rule start_state keep_s_ids (state_list, all_done) match_info = 
 	if (all_done) then (state_list, all_done) 
 	else (
 		let ((forward_edges, backward_edges), _) = s in
@@ -824,12 +887,12 @@ let update_states_list s step_id rule start_state (state_list, all_done) match_i
 			should_add
 		) in
 		let to_add = List.filter all_succ_handled might_add in
-		let new_wq = add_story_events_to_map new_wq to_add in
+		let new_wq = add_story_events_to_map new_wq to_add keep_s_ids in
 		let is_done = IntMap.is_empty new_wq in
 		(state_list @ [(new_wq, new_result_map, new_mapping, is_done)], is_done)
 	)
 
-let step_state_strong_algorithm s mark_step do_greedy (states_list, all_is_done) (state) = 
+let step_state_strong_algorithm s mark_step do_greedy keep_s_ids (states_list, all_is_done) (state) = 
 	if all_is_done then (states_list, all_is_done)
 	else 
 		let (step_id, step) = mark_step in
@@ -848,7 +911,9 @@ let step_state_strong_algorithm s mark_step do_greedy (states_list, all_is_done)
 				| Some match_infos -> (
 					printf "Found potential matches for story rule: %d, step id %d\n" rule step_id ;
 					let get_new_states start_list = 
-						List.fold_left (update_states_list s step_id rule state) (start_list, false) match_infos
+						List.fold_left 
+							(update_states_list s step_id rule state keep_s_ids) 
+						(start_list, false) match_infos
 					in
 					if (do_greedy) then 
 						let (new_states, all_is_done) = get_new_states [] in 
@@ -868,45 +933,115 @@ let step_state_strong_algorithm s mark_step do_greedy (states_list, all_is_done)
  * mapping based on the current trace step mark_step, and returning the 
  * new set of possible states of the algorithm.  
  *)
-let step_states_strong_algorithm s do_greedy (states_list, all_is_done) mark_step = 
+let step_states_strong_algorithm s do_greedy keep_s_ids (states_list, all_is_done) mark_step = 
 	if all_is_done then (states_list, all_is_done)
 	else 
 		let (step_id, step) = mark_step in
 		(* printf "Length of states list at step %d: %d\n" step_id (List.length states_list); *)
-		List.fold_left (step_state_strong_algorithm s mark_step do_greedy) 
+		List.fold_left (step_state_strong_algorithm s mark_step do_greedy keep_s_ids) 
 			([], false) states_list
+
+let get_eoi_indices steps wq = 
+	let get_match_idxs_map rule_id val_list idxs =
+		let get_match_idxs (count, idxs) step = 
+			match step with 
+			| KI.Event (Causal.RULE (rule), trace_inst, _) ->
+				if (rule = rule_id) then (count + 1, idxs @ [count])
+				else (count + 1, idxs)
+			| _ -> (count + 1, idxs)
+		in
+		let 
+			(_, idxs) = List.fold_left get_match_idxs (1, idxs) steps 
+		in
+		idxs
+	in
+	IntMap.fold get_match_idxs_map wq []
+
+let get_first_i_in_list steps i = 
+	let assemble_steps (count, steps_assembled) next_step = 
+		if (count = i) then (count, steps_assembled)
+		else (count + 1, steps_assembled @ [next_step])
+	in
+	List.fold_left assemble_steps (1, []) steps 
 
 (* 
  * The entry point for the strongly compressed story matching algorithm. 
  * Nondeterministically tries to assign events of the story to the trace, walking
  * through the trace and story backwards from the event of interest.
  *)
-let check_strong_story_embeds env steps do_greedy s = 
+let check_strong_story_embeds env steps do_greedy rule_name_list s = 
+	let keep_s_ids = match rule_name_list with
+		| None -> None
+		| Some rule_names -> Some (get_valid_events env s rule_names)
+	in
 	let ((_, _), last_events) = s in
 	let wq = IntMap.empty in (* wq is map from rule id to story_events *)
 	let result_map = IntMap.empty in (* result_map maps story_event ids to trace id *)
 	let mapping = (IntPairMap.empty, IntPairSet.empty) in (* mapping captures the current concretization of agents *)
 	(* mapping stores this: {(Story's agent name, story's agent id): trace's agent id} *)
-	let wq = add_story_events_to_map wq last_events in (* Initialize wq *)
+	let wq = add_story_events_to_map wq last_events keep_s_ids in (* Initialize wq *)
 	let param = [(wq, result_map, mapping, false)] in
-	let (_,is_done) = 
-		List.fold_left (step_states_strong_algorithm s do_greedy) 
-			(param, false) (mark_steps_with_id (List.rev steps))
+	let do_one_story_trace_match (trace_id, steps) =
+		let (_,is_done) = 
+			List.fold_left (step_states_strong_algorithm s do_greedy keep_s_ids) 
+				(param, false) (mark_steps_with_id (List.rev steps))
+		in
+		if is_done then (printf "%s pos: %d \n" "matches" trace_id)
+		else (printf "%s pos: %d \n" "doesn't match" trace_id)
 	in
-	if is_done then (printf "%s \n" "matches")
-	else (printf "%s \n" "doesn't match") 
+	let eoi_indices = get_eoi_indices steps wq in
+	let add_steps_list cur_list i = 
+		cur_list @ [get_first_i_in_list steps i]
+	in
+	let steps_list = 
+		List.fold_left add_steps_list [] eoi_indices 
+	in
+	List.map do_one_story_trace_match steps_list 
+
+let get_stories all_stories rule_name_list env = 
+	let get_good_stories good_stories next_story = 
+		match good_stories with 
+		| None -> (
+			let keep_s_ids = match rule_name_list with
+				| None -> None
+				| Some rule_names -> 
+					Some (get_valid_events env next_story rule_names)
+			in 
+			match keep_s_ids with
+			| None -> Some next_story 
+			| Some ids -> (
+				if ((List.length ids) = 0) then None
+			else Some next_story
+			)
+		)
+		| Some story -> Some story 
+	in  
+	let matched_story = 
+		List.fold_left get_good_stories None all_stories
+	in 
+	match matched_story with 
+	| None -> []
+	| Some story -> [story]
 
 let match_stories_main env steps = 
 	if (!Parameter.matchStory) then (
 		let all_stories = get_stories_from_file true in
-		let _ = List.map (check_strong_story_embeds env steps true) all_stories in 
+		let rule_name_list = Some ["produce_C3_via_C8"] in
+		let all_stories = get_stories all_stories rule_name_list env in
+		(* produce_C3_via_Apop *)
+		let _ = List.map 
+			(check_strong_story_embeds env steps true rule_name_list) 
+			all_stories 
+		in 
 		()
 	)
 
 let match_story_test env steps = 
 	let s_option = (create_toy_story env steps) in
 	match s_option with 
-	| Some s -> check_strong_story_embeds env steps true s
+	| Some s ->
+		let _ = check_strong_story_embeds env steps true None s in
+		()
 	| None -> (printf "%s" "could not load test story")  
 
 (***********************************************************************
