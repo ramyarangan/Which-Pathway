@@ -48,6 +48,7 @@ let always = (fun _ -> true)
 let do_not_log parameter = (S.PH.B.PB.CI.Po.K.H.set_log_step parameter false)
 
 let marshal_weak_story trace_list parameter log_info error handler = 
+	Printf.printf "Num traces in trace_list: %d \n" (List.length trace_list) ;
 	let add_enriched_grid trace = 
 		let grid = U.convert_trace_into_grid trace handler in
 		let _,_,enriched_grid = 

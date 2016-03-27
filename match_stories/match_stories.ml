@@ -43,13 +43,13 @@ let map_rem_head_from_list map key =
 	else map
 
 let mark_steps_with_id steps = 
-	let add_id id_list step = 
-		if ((List.length id_list) = 0) then [(0, step)]
-		else
-			let (cur_int, _) = List.hd id_list in
-			([(cur_int + 1, step)] @ id_list) 
+	let add_id (cur_int, id_list) step = 
+		(cur_int + 1, (cur_int, step) :: id_list) 
 	in
-	List.fold_left add_id [] steps
+	let
+		(_, marked_steps) = List.fold_left add_id (0, []) steps
+	in 
+	marked_steps
 
 let map_rem_from_list_by_id map key n = 
 	if IntMap.mem key map then
@@ -211,6 +211,7 @@ let get_stories_from_file backward =
 		let start_nodes = find_start_nodes for_list back_list all_story_events backward in
 		((for_list, back_list), start_nodes)
 	in
+	printf "Length of trace grid list: %d\n" (List.length trace_grid_list);
 	List.map convert_to_story trace_grid_list
 
 let print_story_info story = 
@@ -268,19 +269,24 @@ let get_valid_event_ids story_ids for_list =
 		if ((List.length new_events) = 0) then story_ids
 		else (
 			let s_id = List.hd new_events in
-			let succ = IntMap.find s_id for_list in 
-			let new_story_ids = 
-				List.filter 
-					(fun x_all -> let (x,_) = x_all in (not (List.mem x story_ids))) 
-				succ
-			in
-			let get_sids cur_sids story_id = 
-				let (sid, _) = story_id in 
-				cur_sids @ [sid]
-			in
-			let new_story_ids = List.fold_left get_sids [] new_story_ids in
-			let new_story_ids = story_ids @ new_story_ids in
-			update_list (seen_so_far @ [s_id]) new_story_ids
+			printf "Next s_id: %d\n" s_id;
+			if IntMap.mem s_id for_list then (
+				let succ = IntMap.find s_id for_list in 
+				let new_story_ids = 
+					List.filter 
+						(fun x_all -> let (x,_) = x_all in (not (List.mem x story_ids))) 
+					succ
+				in
+				let get_sids cur_sids story_id = 
+					let (sid, _) = story_id in 
+					cur_sids @ [sid]
+				in
+				let new_story_ids = List.fold_left get_sids [] new_story_ids in
+				let new_story_ids = story_ids @ new_story_ids in
+				update_list (seen_so_far @ [s_id]) new_story_ids
+			) else (
+				update_list (seen_so_far @ [s_id]) story_ids
+			)
 		)
 	in
 	update_list [] story_ids
@@ -288,6 +294,7 @@ let get_valid_event_ids story_ids for_list =
 let get_valid_events env s rule_name_list = 
 	let ((for_list, back_list), _) = s in
 	let story_ids = get_ids env back_list rule_name_list in
+	printf "Got %d ids for rule_name_list \n" (List.length story_ids);
 	get_valid_event_ids story_ids for_list
 
 (**************************************************************************
@@ -738,7 +745,10 @@ let story_trace_agent_id_matches story_agent_id trace_id structs mapping =
 let find_concretization_helper story_inst_list trace_inst_list mapping = 
 	let rec find_concretization_rec structs mapping = 
 		let (story_name_to_ids, trace_name_to_ids, story_agent_ids) = structs in
-		if (IntPairSet.cardinal story_agent_ids = 0) then Some [mapping]
+		if (IntPairSet.cardinal story_agent_ids = 0) then (
+		 	(* printf "Found complete match\n"; *)
+		 	Some [mapping]
+		)
 		else (
 		let story_agent_id = IntPairSet.choose story_agent_ids in
 		let story_agent_ids = IntPairSet.remove story_agent_id story_agent_ids in
@@ -761,8 +771,10 @@ let find_concretization_helper story_inst_list trace_inst_list mapping =
 					if not (IntPairSet.mem (s_agent_name, trace_id) trace_concretized) then (
 						if story_trace_agent_id_matches story_agent_id trace_id 
 																												structs mapping then (
-							printf "Adding match between story (%d, %d) and trace (%d, %d) \n" 
+							(* printf "Adding match between story (%d, %d) and trace (%d, %d) \n" 
 								s_agent_name s_agent_id s_agent_name trace_id;
+							printf "Still need to match %d story_agent_ids\n" 
+								(IntPairSet.cardinal story_agent_ids); *)
 							let new_s_to_t = 
 								IntPairMap.add story_agent_id trace_id story_to_trace_id in
 							let new_t_concrete = 
@@ -791,9 +803,20 @@ let find_concretization_helper story_inst_list trace_inst_list mapping =
 		)
 		)
 	in
+	let time1 = Unix.gettimeofday() in
 	let structs = 
 		get_structs_for_concretization story_inst_list trace_inst_list in
-	find_concretization_rec structs mapping
+	let time2 = Unix.gettimeofday() in
+	let option_mappings = find_concretization_rec structs mapping in
+	let () = match option_mappings with
+		| None -> ()
+		| Some _ -> (
+			(* printf "Time: %f\n" (Unix.gettimeofday() -. 0.);
+			printf "Time 1: %f\n" (Unix.gettimeofday() -. time1);
+			printf "Time 2: %f\n" (Unix.gettimeofday() -. time2); *) ()
+		)
+	in
+	option_mappings
 
 let make_test_actions_from_tests tests = List.map (fun x -> Test x) tests
 
@@ -883,7 +906,7 @@ let update_states_list s step_id rule start_state keep_s_ids (state_list, all_do
 			let should_add = 
 				List.fold_left succ_handled true (IntMap.find story_event_id forward_edges)
 			in
-			if (should_add) then printf "Should add story node: %d\n" story_event_id ;
+			(* if (should_add) then printf "Should add story node: %d\n" story_event_id ; *)
 			should_add
 		) in
 		let to_add = List.filter all_succ_handled might_add in
@@ -905,11 +928,13 @@ let step_state_strong_algorithm s mark_step do_greedy keep_s_ids (states_list, a
 				(* See if any rule application is applicable given current mapping. Returns
 				* location of match in the list, updated mapping *)
 				let potential_abstract = IntMap.find rule wq in
+				let first_time = Unix.gettimeofday() in
 				let match_option = 
 					find_rule_application mapping trace_inst potential_abstract in
 				match match_option with
 				| Some match_infos -> (
-					printf "Found potential matches for story rule: %d, step id %d\n" rule step_id ;
+					(* printf "Time for a matching version: %f\n" (Unix.gettimeofday() -. first_time); *)
+					(* printf "Found potential matches for story rule: %d, step id %d\n" rule step_id ; *)
 					let get_new_states start_list = 
 						List.fold_left 
 							(update_states_list s step_id rule state keep_s_ids) 
@@ -917,11 +942,14 @@ let step_state_strong_algorithm s mark_step do_greedy keep_s_ids (states_list, a
 					in
 					if (do_greedy) then 
 						let (new_states, all_is_done) = get_new_states [] in 
+						(* printf "Time for adding updated states: %f\n" (Unix.gettimeofday() -. first_time); *)
 						(states_list @ new_states, all_is_done)
 					else let (new_states, all_is_done) = get_new_states [state] in
 						(states_list @ new_states, all_is_done)
 				)
-				| None -> (states_list @ [state], all_is_done)  (* No matching instantiation *)
+				| None -> (
+				 	(states_list @ [state], all_is_done)  (* No matching instantiation *)
+				)
 			)
 			else (states_list @ [state], all_is_done)  (* No matching rule *)
 		)
@@ -936,17 +964,22 @@ let step_state_strong_algorithm s mark_step do_greedy keep_s_ids (states_list, a
 let step_states_strong_algorithm s do_greedy keep_s_ids (states_list, all_is_done) mark_step = 
 	if all_is_done then (states_list, all_is_done)
 	else 
-		let (step_id, step) = mark_step in
 		(* printf "Length of states list at step %d: %d\n" step_id (List.length states_list); *)
 		List.fold_left (step_state_strong_algorithm s mark_step do_greedy keep_s_ids) 
 			([], false) states_list
 
 let get_eoi_indices steps wq = 
+	printf "Doing get_eoi_indices, steps size: %d \n%!" (List.length steps);
 	let get_match_idxs_map rule_id val_list idxs =
-		let get_match_idxs (count, idxs) step = 
+		printf "rule id: %d\n%!" rule_id; 
+		let get_match_idxs (count, idxs) marked_step =
+			let (_, step) = marked_step in  
 			match step with 
 			| KI.Event (Causal.RULE (rule), trace_inst, _) ->
-				if (rule = rule_id) then (count + 1, idxs @ [count])
+				if (rule = rule_id) then (
+					(*printf "Next id: %d\n" count;*)
+					(count + 1, idxs @ [count])
+				)
 				else (count + 1, idxs)
 			| _ -> (count + 1, idxs)
 		in
@@ -963,6 +996,23 @@ let get_first_i_in_list steps i =
 		else (count + 1, steps_assembled @ [next_step])
 	in
 	List.fold_left assemble_steps (1, []) steps 
+
+let transfer_next_i_in_list to_list from_list last_i i = 
+	let range i j = 
+	  let rec aux n acc =
+      if n < i then acc else aux (n-1) (n :: acc)
+    in aux j []
+  in
+  let add_range = range (last_i + 1) i in
+  let add_entry (to_list, from_list) next_id = 
+		match from_list with
+		| [] -> (to_list, from_list)
+		| hd :: tl -> (hd::to_list, tl)
+	in
+  let (new_to_list, new_from_list) = 
+		List.fold_left add_entry (to_list, from_list) add_range 
+	in 
+	(new_to_list, new_from_list)
 
 (* 
  * The entry point for the strongly compressed story matching algorithm. 
@@ -981,37 +1031,58 @@ let check_strong_story_embeds env steps do_greedy rule_name_list s =
 	(* mapping stores this: {(Story's agent name, story's agent id): trace's agent id} *)
 	let wq = add_story_events_to_map wq last_events keep_s_ids in (* Initialize wq *)
 	let param = [(wq, result_map, mapping, false)] in
-	let do_one_story_trace_match (trace_id, steps) =
+	let time1 = Unix.gettimeofday() in
+	let marked_steps = mark_steps_with_id (List.rev steps) in
+	let reversed_steps = List.rev marked_steps in
+	printf "Time to process steps: %f\n" (Unix.gettimeofday() -. time1);
+	let eoi_indices = get_eoi_indices reversed_steps wq in
+	let num_eois = List.length eoi_indices in
+	printf "Num EOIs: %d\n%!" num_eois;
+	let print_step = num_eois/1000 in
+	let oc = open_out "matching_results" in
+	let do_one_story_trace_match (covered, remaining, last_i, count) i =
+		let (new_covered, new_remaining) = 
+			transfer_next_i_in_list covered remaining last_i i 
+		in
 		let (_,is_done) = 
 			List.fold_left (step_states_strong_algorithm s do_greedy keep_s_ids) 
-				(param, false) (mark_steps_with_id (List.rev steps))
+				(param, false) new_covered
 		in
-		if is_done then (printf "%s pos: %d \n" "matches" trace_id)
-		else (printf "%s pos: %d \n" "doesn't match" trace_id)
+		let () = if is_done then ( 
+			(fprintf oc "%s pos: %d\n%!" "matches" i)
+		)
+		else (
+			(fprintf oc "%s pos: %d \n" "doesn't match%!" i)
+		) in
+		let () = if ((count mod print_step) = 0) then (
+			printf 
+				"Done with eoi at trace step %d, num %d / %d. Time since start: %f\n%!" 
+				i count num_eois (Unix.gettimeofday() -. time1)
+		) else () in
+		(new_covered, new_remaining, i, count + 1)
 	in
-	let eoi_indices = get_eoi_indices steps wq in
-	let add_steps_list cur_list i = 
-		cur_list @ [get_first_i_in_list steps i]
-	in
-	let steps_list = 
-		List.fold_left add_steps_list [] eoi_indices 
-	in
-	List.map do_one_story_trace_match steps_list 
+	(* let (_, eoi_filtered) = get_first_i_in_list eoi_indices 2 in *)
+	let _ = 
+		List.fold_left do_one_story_trace_match ([], reversed_steps, 0, 0) eoi_indices
+	in close_out oc; ()
 
 let get_stories all_stories rule_name_list env = 
 	let get_good_stories good_stories next_story = 
 		match good_stories with 
 		| None -> (
+			printf "Getting keep_s_ids\n";
 			let keep_s_ids = match rule_name_list with
 				| None -> None
 				| Some rule_names -> 
 					Some (get_valid_events env next_story rule_names)
 			in 
+			printf "Done getting keep_s_ids\n";
 			match keep_s_ids with
 			| None -> Some next_story 
 			| Some ids -> (
+				printf "Got keep_s_ids: %d\n" (List.length ids);
 				if ((List.length ids) = 0) then None
-			else Some next_story
+				else Some next_story
 			)
 		)
 		| Some story -> Some story 
@@ -1026,8 +1097,10 @@ let get_stories all_stories rule_name_list env =
 let match_stories_main env steps = 
 	if (!Parameter.matchStory) then (
 		let all_stories = get_stories_from_file true in
+		printf "done with this: Found %d stories \n" (List.length all_stories);
 		let rule_name_list = Some ["produce_C3_via_C8"] in
 		let all_stories = get_stories all_stories rule_name_list env in
+		printf "done with that\n"; 
 		(* produce_C3_via_Apop *)
 		let _ = List.map 
 			(check_strong_story_embeds env steps true rule_name_list) 

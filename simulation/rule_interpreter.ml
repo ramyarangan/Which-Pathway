@@ -886,7 +886,9 @@ let check_story_embeds env state =
     Match_stories.match_stories_main env steps
 
 let generate_stories logger env state =
-  match state.story_machinery with
-  | None -> ()
-  | Some (_,(infos,steps)) ->
-     Compression_main.compress_and_print logger env infos (List.rev steps)
+  if not (!Parameter.matchStory) then (
+    match state.story_machinery with
+    | None -> ()
+    | Some (_,(infos,steps)) ->
+       Compression_main.compress_and_print logger env infos (List.rev steps)
+  )
