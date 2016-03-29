@@ -978,7 +978,7 @@ let get_eoi_indices steps wq =
 			| KI.Event (Causal.RULE (rule), trace_inst, _) ->
 				if (rule = rule_id) then (
 					(*printf "Next id: %d\n" count;*)
-					(count + 1, idxs @ [count])
+					(count + 1, count :: idxs)
 				)
 				else (count + 1, idxs)
 			| _ -> (count + 1, idxs)
@@ -986,7 +986,7 @@ let get_eoi_indices steps wq =
 		let 
 			(_, idxs) = List.fold_left get_match_idxs (1, idxs) steps 
 		in
-		idxs
+		(List.rev idxs)
 	in
 	IntMap.fold get_match_idxs_map wq []
 
@@ -1098,10 +1098,11 @@ let match_stories_main env steps =
 	if (!Parameter.matchStory) then (
 		let all_stories = get_stories_from_file true in
 		printf "done with this: Found %d stories \n" (List.length all_stories);
-		let rule_name_list = Some ["produce_C3_via_C8"] in
+		let rule_name_list = Some ["produce_C3_via_Apop"] in
+		(* produce_C3_via_C8 *)
+		let rule_name_list = None in
 		let all_stories = get_stories all_stories rule_name_list env in
 		printf "done with that\n"; 
-		(* produce_C3_via_Apop *)
 		let _ = List.map 
 			(check_strong_story_embeds env steps true rule_name_list) 
 			all_stories 
