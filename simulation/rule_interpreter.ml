@@ -886,7 +886,8 @@ let check_story_embeds env state =
     Match_stories.match_stories_main env steps
 
 let generate_stories logger env state =
-  if not (!Parameter.matchStory) then (
+  (* if not (!Parameter.matchStory) then ( *)
+  if true then (
     match state.story_machinery with
     | None -> ()
     | Some (_,(infos,steps)) ->

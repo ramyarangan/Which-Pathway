@@ -210,6 +210,7 @@ let compress_and_print logger env log_info step_list =
               error,log_info,table1 
           in
 	  (* Now causal compression, with detection of siphons & detection of pseudo inverse events *)
+	  let time_start = Unix.gettimeofday() in
 	  let one_iteration_of_compression (log_info,error,event_list) = 
 	    let error,log_info,event_list = 
 	      if Graph_closure.ignore_flow_from_outgoing_siphon
@@ -297,7 +298,7 @@ let compress_and_print logger env log_info step_list =
               begin
 		let () = Format.fprintf logger "\t - weak flow compression (%i)@." n_causal_stories in 
 		let parameter = S.PH.B.PB.CI.Po.K.H.set_compression_weak parameter in 
-		let trace_list = [] in	
+		let trace_list = [] in
 		let error,log_info,(weakly_story_table,trace_list) = 
 		  U.fold_story_table_with_progress_bar parameter handler log_info error "weak compression" 
 						       (fun parameter ?(shall_we_compute=always) ?(shall_we_compute_profiling_information=always) 
@@ -314,6 +315,7 @@ let compress_and_print logger env log_info step_list =
 						       causal_story_table 
 						       (table3,trace_list)
 		in 
+		Printf.printf "Time for weak story compression: %f\n" (Unix.gettimeofday() -. time_start);
 		let () = if marshal_weak_story_on then (marshal_weak_story trace_list parameter log_info error handler) else () in
 		U.flatten_story_table parameter handler log_info error weakly_story_table
 	      end

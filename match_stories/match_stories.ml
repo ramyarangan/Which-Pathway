@@ -882,8 +882,8 @@ let find_rule_application mapping trace_inst potential_abstract =
 	if ((List.length matchings) <> 0) then Some matchings
 	else None
 
-let update_states_list s step_id rule start_state keep_s_ids (state_list, all_done) match_info = 
-	if (all_done) then (state_list, all_done) 
+let update_states_list s step_id rule start_state keep_s_ids (state_list, all_done, result) match_info = 
+	if (all_done) then (state_list, all_done, result) 
 	else (
 		let ((forward_edges, backward_edges), _) = s in
 		let (match_loc, match_event, new_mapping) = match_info in
@@ -912,11 +912,15 @@ let update_states_list s step_id rule start_state keep_s_ids (state_list, all_do
 		let to_add = List.filter all_succ_handled might_add in
 		let new_wq = add_story_events_to_map new_wq to_add keep_s_ids in
 		let is_done = IntMap.is_empty new_wq in
-		(state_list @ [(new_wq, new_result_map, new_mapping, is_done)], is_done)
+		if (is_done) then
+			(state_list @ [(new_wq, new_result_map, new_mapping, is_done)], is_done, Some new_result_map)
+		else
+			(state_list @ [(new_wq, new_result_map, new_mapping, is_done)], is_done, None)
 	)
 
-let step_state_strong_algorithm s mark_step do_greedy keep_s_ids (states_list, all_is_done) (state) = 
-	if all_is_done then (states_list, all_is_done)
+let step_state_strong_algorithm s mark_step do_greedy keep_s_ids 
+	(states_list, all_is_done, result) (state) = 
+	if all_is_done then (states_list, all_is_done, result)
 	else 
 		let (step_id, step) = mark_step in
 		match step with
@@ -938,22 +942,22 @@ let step_state_strong_algorithm s mark_step do_greedy keep_s_ids (states_list, a
 					let get_new_states start_list = 
 						List.fold_left 
 							(update_states_list s step_id rule state keep_s_ids) 
-						(start_list, false) match_infos
+						(start_list, false, None) match_infos
 					in
 					if (do_greedy) then 
-						let (new_states, all_is_done) = get_new_states [] in 
+						let (new_states, all_is_done, result) = get_new_states [] in 
 						(* printf "Time for adding updated states: %f\n" (Unix.gettimeofday() -. first_time); *)
-						(states_list @ new_states, all_is_done)
-					else let (new_states, all_is_done) = get_new_states [state] in
-						(states_list @ new_states, all_is_done)
+						(states_list @ new_states, all_is_done, result)
+					else let (new_states, all_is_done, result) = get_new_states [state] in
+						(states_list @ new_states, all_is_done, result)
 				)
 				| None -> (
-				 	(states_list @ [state], all_is_done)  (* No matching instantiation *)
+				 	(states_list @ [state], all_is_done, result)  (* No matching instantiation *)
 				)
 			)
-			else (states_list @ [state], all_is_done)  (* No matching rule *)
+			else (states_list @ [state], all_is_done, result)  (* No matching rule *)
 		)
-		| _ -> (states_list @ [state], all_is_done) (* Not a trace event step *)
+		| _ -> (states_list @ [state], all_is_done, result) (* Not a trace event step *)
 
 (*
  * Step through all possible states (all possible story event to trace event
@@ -961,12 +965,13 @@ let step_state_strong_algorithm s mark_step do_greedy keep_s_ids (states_list, a
  * mapping based on the current trace step mark_step, and returning the 
  * new set of possible states of the algorithm.  
  *)
-let step_states_strong_algorithm s do_greedy keep_s_ids (states_list, all_is_done) mark_step = 
-	if all_is_done then (states_list, all_is_done)
+let step_states_strong_algorithm s do_greedy keep_s_ids 
+	(states_list, all_is_done, result) mark_step = 
+	if all_is_done then (states_list, all_is_done, result)
 	else 
 		(* printf "Length of states list at step %d: %d\n" step_id (List.length states_list); *)
 		List.fold_left (step_state_strong_algorithm s mark_step do_greedy keep_s_ids) 
-			([], false) states_list
+			([], false, None) states_list
 
 let get_eoi_indices steps wq = 
 	printf "Doing get_eoi_indices, steps size: %d \n%!" (List.length steps);
@@ -1014,12 +1019,24 @@ let transfer_next_i_in_list to_list from_list last_i i =
 	in 
 	(new_to_list, new_from_list)
 
+let print_match_stats embedding s env count oc =
+	(* let rule_name_list = ["A/";"B/";"C/";"A+B";"A+C";"B+C";"AB+C@A";"A+BC@B";"AC+B@A"] in
+	let ((for_list, back_list), _) = s in
+	(* fprintf oc "%d %d\n%!" count (List.length rule_name_list) ; *)
+	let print_mapping name = 
+		let story_ids = get_ids env back_list [name] in
+		let story_ids = story_ids @ (get_ids env for_list [name]) in
+		if ((List.length story_ids) > 0) then 
+			fprintf oc "%s %d\n%!" name (IntMap.find (List.hd story_ids) embedding);
+	in
+	let _ = List.map print_mapping rule_name_list in *) ()
+
 (* 
  * The entry point for the strongly compressed story matching algorithm. 
  * Nondeterministically tries to assign events of the story to the trace, walking
  * through the trace and story backwards from the event of interest.
  *)
-let check_strong_story_embeds env steps do_greedy rule_name_list s = 
+let check_strong_story_embeds env steps do_greedy rule_name_list print_things s = 
 	let keep_s_ids = match rule_name_list with
 		| None -> None
 		| Some rule_names -> Some (get_valid_events env s rule_names)
@@ -1038,33 +1055,41 @@ let check_strong_story_embeds env steps do_greedy rule_name_list s =
 	let eoi_indices = get_eoi_indices reversed_steps wq in
 	let num_eois = List.length eoi_indices in
 	printf "Num EOIs: %d\n%!" num_eois;
-	let print_step = num_eois/1000 in
+	let print_step = 1 + num_eois/1000 in
 	let oc = open_out "matching_results" in
+	let oc_embedding = open_out "embedding_map" in
+
 	let do_one_story_trace_match (covered, remaining, last_i, count) i =
 		let (new_covered, new_remaining) = 
 			transfer_next_i_in_list covered remaining last_i i 
 		in
-		let (_,is_done) = 
+		let (_,is_done,result) = 
 			List.fold_left (step_states_strong_algorithm s do_greedy keep_s_ids) 
-				(param, false) new_covered
+				(param, false, None) new_covered
 		in
 		let () = if is_done then ( 
+			let () = match result with 
+				| None -> ()
+				| Some embedding -> print_match_stats embedding s env count oc_embedding
+			in
 			(fprintf oc "%s pos: %d\n%!" "matches" i)
 		)
 		else (
 			(fprintf oc "%s pos: %d \n" "doesn't match%!" i)
 		) in
-		let () = if ((count mod print_step) = 0) then (
+		let () = if (((count mod print_step) = 0) && print_things) then (
 			printf 
 				"Done with eoi at trace step %d, num %d / %d. Time since start: %f\n%!" 
 				i count num_eois (Unix.gettimeofday() -. time1)
 		) else () in
 		(new_covered, new_remaining, i, count + 1)
 	in
+
 	(* let (_, eoi_filtered) = get_first_i_in_list eoi_indices 2 in *)
 	let _ = 
 		List.fold_left do_one_story_trace_match ([], reversed_steps, 0, 0) eoi_indices
-	in close_out oc; ()
+	in close_out oc; close_out oc_embedding;
+	()
 
 let get_stories all_stories rule_name_list env = 
 	let get_good_stories good_stories next_story = 
@@ -1096,17 +1121,19 @@ let get_stories all_stories rule_name_list env =
 
 let match_stories_main env steps = 
 	if (!Parameter.matchStory) then (
+		let time_start = Unix.gettimeofday() in
 		let all_stories = get_stories_from_file true in
 		printf "done with this: Found %d stories \n" (List.length all_stories);
-		let rule_name_list = Some ["produce_C3_via_Apop"] in
-		(* produce_C3_via_C8 *)
-		let rule_name_list = None in
+		(* let rule_name_list = Some ["produce_C3_via_C8"] in *)
+		(* produce_C3_via_Apop *)
+		let rule_name_list = None in 
 		let all_stories = get_stories all_stories rule_name_list env in
 		printf "done with that\n"; 
 		let _ = List.map 
-			(check_strong_story_embeds env steps true rule_name_list) 
+			(check_strong_story_embeds env steps true rule_name_list false) 
 			all_stories 
 		in 
+		printf "Time for story matching: %f\n" (Unix.gettimeofday() -. time_start);
 		()
 	)
 
@@ -1114,7 +1141,7 @@ let match_story_test env steps =
 	let s_option = (create_toy_story env steps) in
 	match s_option with 
 	| Some s ->
-		let _ = check_strong_story_embeds env steps true None s in
+		let _ = check_strong_story_embeds env steps true None false s in
 		()
 	| None -> (printf "%s" "could not load test story")  
 
